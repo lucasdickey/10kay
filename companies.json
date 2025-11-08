@@ -1,0 +1,239 @@
+{
+  "companies": [
+    {
+      "ticker": "AAPL",
+      "name": "Apple Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "MSFT",
+      "name": "Microsoft Corporation",
+      "enabled": true
+    },
+    {
+      "ticker": "GOOGL",
+      "name": "Alphabet Inc. (Class A)",
+      "enabled": true
+    },
+    {
+      "ticker": "GOOG",
+      "name": "Alphabet Inc. (Class C)",
+      "enabled": true
+    },
+    {
+      "ticker": "AMZN",
+      "name": "Amazon.com, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "NVDA",
+      "name": "Nvidia Corporation",
+      "enabled": true
+    },
+    {
+      "ticker": "META",
+      "name": "Meta Platforms, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "TSLA",
+      "name": "Tesla, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "AVGO",
+      "name": "Broadcom Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "ORCL",
+      "name": "Oracle Corporation",
+      "enabled": true
+    },
+    {
+      "ticker": "INTC",
+      "name": "Intel Corporation",
+      "enabled": true
+    },
+    {
+      "ticker": "TSM",
+      "name": "Taiwan Semiconductor Manufacturing Co., Ltd.",
+      "enabled": true
+    },
+    {
+      "ticker": "ASML",
+      "name": "ASML Holding N.V.",
+      "enabled": true
+    },
+    {
+      "ticker": "ADBE",
+      "name": "Adobe Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "CRM",
+      "name": "Salesforce, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "NOW",
+      "name": "ServiceNow, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "SNOW",
+      "name": "Snowflake Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "SHOP",
+      "name": "Shopify Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "QCOM",
+      "name": "Qualcomm, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "TXN",
+      "name": "Texas Instruments Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "MU",
+      "name": "Micron Technology, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "AMD",
+      "name": "Advanced Micro Devices, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "ADSK",
+      "name": "Autodesk, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "PANW",
+      "name": "Palo Alto Networks, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "CRWD",
+      "name": "CrowdStrike Holdings, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "ZM",
+      "name": "Zoom Video Communications, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "INTU",
+      "name": "Intuit Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "TEAM",
+      "name": "Atlassian Corporation Plc",
+      "enabled": true
+    },
+    {
+      "ticker": "MRVL",
+      "name": "Marvell Technology, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "CDNS",
+      "name": "Cadence Design Systems, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "KLAC",
+      "name": "KLA Corporation",
+      "enabled": true
+    },
+    {
+      "ticker": "LRCX",
+      "name": "Lam Research Corporation",
+      "enabled": true
+    },
+    {
+      "ticker": "ADI",
+      "name": "Analog Devices, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "PYPL",
+      "name": "PayPal Holdings, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "SQ",
+      "name": "Block, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "SPOT",
+      "name": "Spotify Technology S.A.",
+      "enabled": true
+    },
+    {
+      "ticker": "UBER",
+      "name": "Uber Technologies, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "DASH",
+      "name": "DoorDash, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "WDAY",
+      "name": "Workday, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "ZS",
+      "name": "Zscaler, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "MDB",
+      "name": "MongoDB, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "SPLK",
+      "name": "Splunk Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "OKTA",
+      "name": "Okta, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "ZI",
+      "name": "ZoomInfo Technologies Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "PINS",
+      "name": "Pinterest, Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "U",
+      "name": "Unity Software Inc.",
+      "enabled": true
+    },
+    {
+      "ticker": "FIG",
+      "name": "Figma, Inc.",
+      "enabled": true
+    }
+  ]
+}

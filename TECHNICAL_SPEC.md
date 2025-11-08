@@ -1134,8 +1134,10 @@ Given the target of 50 beta users for initial validation, we can make several si
 ### Development Workflow
 
 **Deployment:**
-- **Single environment initially** - Production only, test locally
-- **Add staging later** - When needed for QA
+- **Production only** - Single AWS environment (solo developer, no need for dev/staging)
+- **Testing strategy:** Vercel preview deployments for each PR/branch
+- **YOLO to prod** - Merge to main → auto-deploy to production
+- **Rollback:** Git revert + Vercel instant rollback if needed
 
 **Database Migrations:**
 - **Simple SQL scripts** - No complex migration framework needed initially
@@ -1184,9 +1186,9 @@ Total effective cost: $0 (AWS credits cover everything)
 
 Upgrade when you hit:
 - **200+ concurrent users** → db.t3.small + consider connection pooling
-- **500+ subscribers** → Add staging environment
-- **1,000+ subscribers** → Add caching layer (Redis)
-- **5,000+ subscribers** → RDS Proxy, load monitoring, auto-scaling
+- **500+ subscribers** → Add monitoring/alerting (CloudWatch alarms, error tracking)
+- **1,000+ subscribers** → Add caching layer (Redis/Vercel KV)
+- **5,000+ subscribers** → RDS Proxy, advanced monitoring, auto-scaling
 
 ---
 
