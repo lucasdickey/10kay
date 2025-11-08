@@ -177,21 +177,13 @@ The Python pipeline is designed to run 4x daily via GitHub Actions (to be implem
 
 **Pipeline Flow:**
 ```
-┌─────────────┐
-│  FETCHERS   │ → Fetch SEC filings from EDGAR API
-└──────┬──────┘   Download documents, upload to S3
-       ↓
-┌─────────────┐
-│  ANALYZERS  │ → Analyze with Claude 3.5 Sonnet (Bedrock)
-└──────┬──────┘   Generate TLDR + deep analysis
-       ↓
-┌─────────────┐
-│ GENERATORS  │ → Generate blog HTML, email HTML
-└──────┬──────┘   Format for multiple channels
-       ↓
-┌─────────────┐
-│ PUBLISHERS  │ → Publish to database
-└─────────────┘   Send email newsletters via Resend
+SEC EDGAR → EdgarFetcher → S3 + Database (filings table)
+    ↓
+Database → ClaudeAnalyzer → Bedrock API → Database (content table)
+    ↓
+Database → BlogGenerator → Database (blog_html column)
+    ↓
+Database → EmailPublisher → Resend API → Subscribers
 ```
 
 **Manual Execution:**
