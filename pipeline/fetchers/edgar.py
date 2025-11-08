@@ -196,12 +196,18 @@ class EdgarFetcher(BaseFetcher):
                 filing_date_str = cols[3].text.strip()
                 filing_date = datetime.strptime(filing_date_str, '%Y-%m-%d')
 
-                # Get accession number and document link
+                # Get accession number from description column
+                # Format: "Annual report [...]Acc-no: 0000320193-25-000079 (34 Act)"
+                description = cols[2].text.strip()
+                acc_match = re.search(r'Acc-no:\s*([\d-]+)', description)
+                if not acc_match:
+                    continue
+                accession_number = acc_match.group(1)
+
+                # Get document link
                 doc_link = cols[1].find('a')
                 if not doc_link:
                     continue
-
-                accession_number = doc_link['id']  # Accession number is in the ID
                 doc_href = doc_link['href']
 
                 # Build document URL
