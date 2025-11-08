@@ -405,39 +405,46 @@ class EdgarFetcher(BaseFetcher):
         try:
             cursor = self.db_connection.cursor()
 
-            # Insert filing record
+            # Get company_id from ticker
+            cursor.execute(
+                "SELECT id FROM companies WHERE ticker = %s",
+                (filing.ticker,)
+            )
+            company_row = cursor.fetchone()
+            if not company_row:
+                raise DatabaseError(f"Company {filing.ticker} not found in database")
+            company_id = company_row[0]
+
+            # Convert fiscal_period to fiscal_quarter
+            fiscal_quarter = None
+            if filing.fiscal_period and filing.fiscal_period.startswith('Q'):
+                fiscal_quarter = int(filing.fiscal_period[1])  # Extract number from 'Q1', 'Q2', etc.
+
+            # Insert filing record (matching actual schema)
             cursor.execute("""
                 INSERT INTO filings (
-                    ticker,
+                    company_id,
                     filing_type,
                     filing_date,
                     fiscal_year,
-                    fiscal_period,
+                    fiscal_quarter,
                     accession_number,
-                    document_url,
-                    s3_url,
-                    html_s3_url,
-                    status,
-                    metadata
+                    edgar_url,
+                    raw_document_url,
+                    status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
-                filing.ticker,
+                company_id,
                 filing.filing_type.value,
                 filing.filing_date,
                 filing.fiscal_year,
-                filing.fiscal_period,
+                fiscal_quarter,
                 filing.accession_number,
-                filing.document_url,
-                s3_url,
-                html_s3_url or filing.html_url,
-                'fetched',  # Initial status
-                {
-                    'cik': filing.cik,
-                    'form_type': filing.form_type,
-                    'file_size': filing.file_size
-                }
+                filing.document_url,  # EDGAR URL
+                s3_url,  # S3 URL for raw document
+                'pending'  # Initial status - ready for processing
             ))
 
             filing_id = cursor.fetchone()[0]

@@ -91,6 +91,7 @@ class PipelineLogger:
         exception: Optional[Exception]
     ):
         """Persist log entry to processing_logs table"""
+        import json
         cursor = self.db_connection.cursor()
 
         # Build metadata
@@ -100,6 +101,7 @@ class PipelineLogger:
             metadata['exception_type'] = type(exception).__name__
 
         # Insert log entry
+        # Use json.dumps() to serialize dict to JSONB
         cursor.execute("""
             INSERT INTO processing_logs (step, filing_id, level, message, metadata)
             VALUES (%s, %s, %s, %s, %s)
@@ -108,7 +110,7 @@ class PipelineLogger:
             self.filing_id,
             level.value,
             message,
-            metadata if metadata else None
+            json.dumps(metadata) if metadata else None
         ))
 
         self.db_connection.commit()
