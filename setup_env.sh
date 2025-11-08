@@ -16,8 +16,8 @@ fi
 echo "📋 Checking your AWS CLI configuration..."
 echo ""
 
-# Get the current AWS profile (default or specified)
-AWS_PROFILE=${AWS_PROFILE:-default}
+# Get the current AWS profile (10kay-prod or specified)
+AWS_PROFILE=${AWS_PROFILE:-10kay-prod}
 echo "Using AWS profile: $AWS_PROFILE"
 echo ""
 
