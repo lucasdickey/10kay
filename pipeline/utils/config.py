@@ -32,7 +32,7 @@ class AWSConfig:
             secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
             s3_filings_bucket=os.getenv('AWS_S3_FILINGS_BUCKET', '10kay-filings'),
             s3_audio_bucket=os.getenv('AWS_S3_AUDIO_BUCKET', '10kay-audio'),
-            bedrock_model_id=os.getenv('AWS_BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+            bedrock_model_id=os.getenv('AWS_BEDROCK_MODEL_ID', 'anthropic.claude-sonnet-4-5-20250929-v1:0')
         )
 
 

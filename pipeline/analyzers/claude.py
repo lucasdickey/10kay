@@ -1,7 +1,7 @@
 """
 Claude AI analyzer implementation
 
-Analyzes SEC filings using Claude 3.5 Sonnet via AWS Bedrock.
+Analyzes SEC filings using Claude Sonnet 4.5 via AWS Bedrock.
 """
 import json
 import time
@@ -25,7 +25,7 @@ class ClaudeAnalyzer(BaseAnalyzer):
     """
     Concrete implementation of Claude AI analyzer
 
-    Uses AWS Bedrock to analyze SEC filings with Claude 3.5 Sonnet.
+    Uses AWS Bedrock to analyze SEC filings with Claude Sonnet 4.5.
     Generates both TLDR (free tier) and deep analysis (paid tier).
     """
 
@@ -318,7 +318,7 @@ Respond with only valid JSON, no additional text."""
         start_time = time.time()
 
         try:
-            # Build request body for Claude 3.5 Sonnet
+            # Build request body for Claude Sonnet 4.5
             request_body = {
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 4096,

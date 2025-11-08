@@ -32,7 +32,7 @@ Tech and startup professionals seeking business strategy insights with a "TBPN m
 ### Backend & Infrastructure
 - **AWS RDS PostgreSQL** for relational data (db.t3.micro)
 - **AWS S3** for document and audio storage
-- **AWS Bedrock** (Claude 3.5 Sonnet) for AI-powered analysis
+- **AWS Bedrock** (Claude Sonnet 4.5) for AI-powered analysis
 - **Python 3.11+** for data processing pipeline
 - **GitHub Actions** for scheduled filing checks (4x daily)
 
@@ -179,7 +179,7 @@ The Python pipeline is designed to run 4x daily via GitHub Actions (to be implem
 ```
 SEC EDGAR → EdgarFetcher → S3 + Database (filings table)
     ↓
-Database → ClaudeAnalyzer → Bedrock API → Database (content table)
+Database → ClaudeAnalyzer → Bedrock API (Sonnet 4.5) → Database (content table)
     ↓
 Database → BlogGenerator → Database (blog_html column)
     ↓
@@ -210,7 +210,7 @@ See `pipeline/README.md` for detailed documentation.
 ### ✅ Phase 0: Foundation (Completed)
 - ✅ AWS RDS PostgreSQL database created and configured
 - ✅ AWS S3 buckets created (filings, audio)
-- ✅ AWS Bedrock access requested (Claude 3.5 Sonnet)
+- ✅ AWS Bedrock access requested (Claude Sonnet 4.5)
 - ✅ IAM user with scoped permissions
 - ✅ Next.js 15 project initialized with TypeScript
 - ✅ Database migrations applied (7 tables, 37 indexes, 3 views)
@@ -281,7 +281,7 @@ Proprietary - All Rights Reserved
 
 ## Acknowledgments
 
-- **Anthropic Claude** for AI-powered analysis via AWS Bedrock
+- **Anthropic Claude Sonnet 4.5** for AI-powered analysis via AWS Bedrock
 - **SEC EDGAR** for public company filings data
 - **Vercel** for Next.js hosting and deployment
 - **AWS** for infrastructure ($100k credits through June 2026)

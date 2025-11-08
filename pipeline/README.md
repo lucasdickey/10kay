@@ -12,7 +12,7 @@ The pipeline follows a modular, four-phase architecture:
 └──────┬──────┘
        ↓
 ┌─────────────┐
-│  ANALYZERS  │ → Analyze with Claude AI (AWS Bedrock)
+│  ANALYZERS  │ → Analyze with Claude Sonnet 4.5 (AWS Bedrock)
 └──────┬──────┘
        ↓
 ┌─────────────┐
@@ -43,7 +43,7 @@ Fetch SEC filings from EDGAR API and store in S3.
 Analyze filings with Claude AI via AWS Bedrock.
 
 - `base.py` - Abstract `BaseAnalyzer` class
-- `claude.py` - Claude 3.5 Sonnet implementation (TODO)
+- `claude.py` - Claude Sonnet 4.5 implementation
 
 **Key responsibilities:**
 - Extract relevant sections from filings
