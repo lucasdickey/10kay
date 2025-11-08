@@ -92,8 +92,8 @@ This policy gives 10KAY exactly what it needs, nothing more:
         "s3:DeleteObject",
         "s3:PutBucketVersioning",
         "s3:GetBucketVersioning",
-        "s3:PutBucketEncryption",
-        "s3:GetBucketEncryption"
+        "s3:PutEncryptionConfiguration",
+        "s3:GetEncryptionConfiguration"
       ],
       "Resource": [
         "arn:aws:s3:::10kay-*",
@@ -110,6 +110,19 @@ This policy gives 10KAY exactly what it needs, nothing more:
         "bedrock:GetFoundationModel"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "MarketplaceAccess",
+      "Effect": "Allow",
+      "Action": [
+        "aws-marketplace:ViewSubscriptions"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": ["us-east-1", "us-west-2"]
+        }
+      }
     }
   ]
 }
