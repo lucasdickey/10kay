@@ -16,11 +16,10 @@ from typing import List, Optional
 import psycopg2
 
 from utils import get_config, PipelineLogger, setup_root_logger
-from fetchers.base import FilingType
-# from fetchers.edgar import EdgarFetcher  # TODO: Implement
-# from analyzers.claude import ClaudeAnalyzer  # TODO: Implement
-# from generators.blog import BlogGenerator  # TODO: Implement
-# from publishers.email import EmailPublisher  # TODO: Implement
+from fetchers import EdgarFetcher, FilingType
+from analyzers import ClaudeAnalyzer, AnalysisType
+from generators import BlogGenerator, ContentFormat
+from publishers import EmailPublisher, PublishChannel
 
 
 def get_enabled_companies(conn) -> List[dict]:
@@ -67,8 +66,8 @@ def fetch_phase(conn, logger, config, tickers: Optional[List[str]] = None):
 
     logger.info(f"Processing {len(companies)} companies")
 
-    # TODO: Implement EdgarFetcher
-    # fetcher = EdgarFetcher(config, conn, logger)
+    # Initialize fetcher
+    fetcher = EdgarFetcher(config, conn, logger)
 
     total_fetched = 0
 
@@ -77,16 +76,15 @@ def fetch_phase(conn, logger, config, tickers: Optional[List[str]] = None):
         logger.info(f"Fetching filings for {ticker}")
 
         try:
-            # TODO: Uncomment when EdgarFetcher is implemented
-            # count = fetcher.process_company(
-            #     ticker=ticker,
-            #     filing_type=None,  # Fetch both 10-K and 10-Q
-            #     limit=1,  # Only fetch most recent filing
-            #     skip_existing=True
-            # )
-            # total_fetched += count
+            count = fetcher.process_company(
+                ticker=ticker,
+                filing_type=None,  # Fetch both 10-K and 10-Q
+                limit=1,  # Only fetch most recent filing
+                skip_existing=True
+            )
+            total_fetched += count
 
-            logger.info(f"✓ Fetched filings for {ticker}")
+            logger.info(f"✓ Fetched {count} new filings for {ticker}")
 
         except Exception as e:
             logger.error(f"✗ Failed to fetch {ticker}", exception=e)
@@ -130,8 +128,8 @@ def analyze_phase(conn, logger, config):
 
     logger.info(f"Found {len(pending_filings)} pending filings to analyze")
 
-    # TODO: Implement ClaudeAnalyzer
-    # analyzer = ClaudeAnalyzer(config, conn, logger)
+    # Initialize analyzer
+    analyzer = ClaudeAnalyzer(config, conn, logger)
 
     total_analyzed = 0
 
@@ -139,18 +137,15 @@ def analyze_phase(conn, logger, config):
         logger.info(f"Analyzing {ticker} {filing_type}")
 
         try:
-            # TODO: Uncomment when ClaudeAnalyzer is implemented
-            # content_id = analyzer.process_filing(
-            #     filing_id=filing_id,
-            #     analysis_type=AnalysisType.DEEP_ANALYSIS,
-            #     skip_existing=True
-            # )
+            content_id = analyzer.process_filing(
+                filing_id=filing_id,
+                analysis_type=AnalysisType.DEEP_ANALYSIS,
+                skip_existing=True
+            )
 
-            # if content_id:
-            #     total_analyzed += 1
-            #     logger.info(f"✓ Analyzed {ticker} {filing_type}")
-
-            pass
+            if content_id:
+                total_analyzed += 1
+                logger.info(f"✓ Analyzed {ticker} {filing_type}")
 
         except Exception as e:
             logger.error(f"✗ Failed to analyze {ticker}", exception=e)
@@ -189,8 +184,8 @@ def generate_phase(conn, logger, config):
 
     logger.info(f"Found {len(pending_content)} content items to format")
 
-    # TODO: Implement BlogGenerator, EmailGenerator
-    # generator = BlogGenerator(config, conn, logger)
+    # Initialize generator
+    generator = BlogGenerator(config, conn, logger)
 
     total_generated = 0
 
@@ -198,24 +193,20 @@ def generate_phase(conn, logger, config):
         logger.info(f"Generating formats for content {content_id}")
 
         try:
-            # TODO: Uncomment when generators are implemented
-            # from generators.base import ContentFormat
-            # formats = [
-            #     ContentFormat.BLOG_POST_HTML,
-            #     ContentFormat.EMAIL_HTML,
-            #     ContentFormat.TWITTER_THREAD
-            # ]
-            #
-            # results = generator.process_content(
-            #     content_id=content_id,
-            #     formats=formats
-            # )
-            #
-            # if results:
-            #     total_generated += 1
-            #     logger.info(f"✓ Generated {len(results)} formats")
+            # Generate blog post HTML
+            # Note: Email HTML would use a separate EmailGenerator class
+            formats = [
+                ContentFormat.BLOG_POST_HTML
+            ]
 
-            pass
+            results = generator.process_content(
+                content_id=content_id,
+                formats=formats
+            )
+
+            if results:
+                total_generated += 1
+                logger.info(f"✓ Generated {len(results)} formats")
 
         except Exception as e:
             logger.error(f"✗ Failed to generate formats", exception=e)
@@ -261,8 +252,8 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
 
     logger.info(f"Found {len(ready_content)} content items ready to publish")
 
-    # TODO: Implement EmailPublisher
-    # publisher = EmailPublisher(config, conn, logger)
+    # Initialize publisher
+    publisher = EmailPublisher(config, conn, logger)
 
     total_published = 0
 
@@ -270,23 +261,18 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
         logger.info(f"Publishing: {ticker} - {headline}")
 
         try:
-            # TODO: Uncomment when publishers are implemented
-            # from publishers.base import PublishChannel
-            #
-            # # Publish to email newsletter (respecting free vs paid tiers)
-            # result = publisher.publish(
-            #     content_id=content_id,
-            #     channel=PublishChannel.EMAIL_NEWSLETTER,
-            #     dry_run=dry_run
-            # )
-            #
-            # if not dry_run:
-            #     publisher.save_delivery_record(result)
-            #
-            # total_published += 1
-            # logger.info(f"✓ Published to {result.recipient_count} subscribers")
+            # Publish to email newsletter (respecting free vs paid tiers)
+            result = publisher.publish(
+                content_id=content_id,
+                channel=PublishChannel.EMAIL_NEWSLETTER,
+                dry_run=dry_run
+            )
 
-            pass
+            if not dry_run:
+                publisher.save_delivery_record(result)
+
+            total_published += 1
+            logger.info(f"✓ Published to {result.recipient_count} subscribers")
 
         except Exception as e:
             logger.error(f"✗ Failed to publish", exception=e)

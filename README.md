@@ -123,8 +123,11 @@ Currently tracking **47 tech companies** including:
 
 4. **Set up the database**
    ```bash
-   # Run migrations (coming soon)
-   psql $DATABASE_URL < migrations/001_initial_schema.sql
+   # Run migrations
+   python3 run_migrations.py
+
+   # Seed companies
+   python3 seed_companies.py
    ```
 
 5. **Run the development server**
@@ -166,55 +169,95 @@ Required environment variables (see `.env.example` for template):
 
 ### Data Processing Pipeline
 
-The Python pipeline runs 4x daily via GitHub Actions:
+The Python pipeline is designed to run 4x daily via GitHub Actions (to be implemented):
 - **6:00 AM EST** - Morning check
 - **9:00 AM EST** - Mid-morning check
 - **12:00 PM EST** - Noon check
 - **6:00 PM EST** - Evening check
 
-**Flow:**
-1. Fetch new filings from SEC EDGAR API
-2. Download and parse PDF documents
-3. Fetch historical context (previous quarters)
-4. Analyze with Claude via AWS Bedrock
-5. Generate blog post, email, and tweet content
-6. Publish to database
-7. Send email newsletters via Resend
+**Pipeline Flow:**
+```
+┌─────────────┐
+│  FETCHERS   │ → Fetch SEC filings from EDGAR API
+└──────┬──────┘   Download documents, upload to S3
+       ↓
+┌─────────────┐
+│  ANALYZERS  │ → Analyze with Claude 3.5 Sonnet (Bedrock)
+└──────┬──────┘   Generate TLDR + deep analysis
+       ↓
+┌─────────────┐
+│ GENERATORS  │ → Generate blog HTML, email HTML
+└──────┬──────┘   Format for multiple channels
+       ↓
+┌─────────────┐
+│ PUBLISHERS  │ → Publish to database
+└─────────────┘   Send email newsletters via Resend
+```
+
+**Manual Execution:**
+```bash
+# Run full pipeline
+python3 pipeline/main.py
+
+# Run specific phase
+python3 pipeline/main.py --phase fetch
+python3 pipeline/main.py --phase analyze
+python3 pipeline/main.py --phase generate
+python3 pipeline/main.py --phase publish --dry-run
+
+# Process specific companies
+python3 pipeline/main.py --phase fetch --tickers AAPL GOOGL META
+```
+
+See `pipeline/README.md` for detailed documentation.
 
 ---
 
 ## Phased Implementation
 
 ### ✅ Phase 0: Foundation (Completed)
-- AWS infrastructure (RDS, S3, Bedrock)
-- IAM user and permissions
-- Next.js project initialized
+- ✅ AWS RDS PostgreSQL database created and configured
+- ✅ AWS S3 buckets created (filings, audio)
+- ✅ AWS Bedrock access requested (Claude 3.5 Sonnet)
+- ✅ IAM user with scoped permissions
+- ✅ Next.js 15 project initialized with TypeScript
+- ✅ Database migrations applied (7 tables, 37 indexes, 3 views)
+- ✅ 47 companies seeded into database
 
-### 🔄 Phase 1: Core Content Engine (In Progress)
-- SEC EDGAR integration
-- Claude analysis pipeline
-- Blog post generation
-- Content display
+### 🔄 Phase 1: Core Content Engine (90% Complete)
+- ✅ Python pipeline foundation with base classes
+- ✅ SEC EDGAR fetcher implementation (EdgarFetcher)
+- ✅ Claude AI analyzer implementation (ClaudeAnalyzer)
+- ✅ Blog post HTML generator (BlogGenerator)
+- ✅ Email newsletter publisher (EmailPublisher)
+- ✅ Main pipeline orchestrator with CLI
+- ⏭️ Next.js content display pages
+- ⏭️ API routes for frontend-backend integration
+- ⏭️ First test run of full pipeline
 
-### Phase 2: Automation
-- GitHub Actions workflows
-- Automated filing detection
-- Historical data fetching
+### Phase 2: Automation (Pending)
+- GitHub Actions workflows for 4x daily execution
+- Automated filing detection and processing
+- Error monitoring and alerting
+- Historical data backfill
 
-### Phase 3: User Accounts & Email
-- Clerk authentication
-- Email newsletter delivery
-- Subscriber management
+### Phase 3: User Accounts & Email (Pending)
+- Clerk authentication integration
+- Subscriber management UI
+- Email newsletter delivery via Resend
+- Subscription preference management
 
-### Phase 4: Monetization
+### Phase 4: Monetization (Pending)
 - Stripe subscription integration
-- Paywall implementation
-- Free vs paid content tiers
+- Paywall implementation (free vs paid tiers)
+- Payment flow and billing management
+- Admin dashboard for metrics
 
-### Phase 5: Audio/Podcast
+### Phase 5: Audio/Podcast (Pending)
 - ElevenLabs TTS integration
 - Audio episode generation
 - RSS podcast feed
+- Podcast distribution
 
 ---
 
