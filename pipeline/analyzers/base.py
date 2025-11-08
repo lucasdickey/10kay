@@ -191,8 +191,9 @@ class BaseAnalyzer(ABC):
             return False
 
         cursor = self.db_connection.cursor()
+        # Content table doesn't have status column - just check if content exists
         cursor.execute(
-            "SELECT 1 FROM content WHERE filing_id = %s AND status = 'published'",
+            "SELECT 1 FROM content WHERE filing_id = %s",
             (filing_id,)
         )
         exists = cursor.fetchone() is not None

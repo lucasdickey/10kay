@@ -110,14 +110,13 @@ def analyze_phase(conn, logger, config):
     # Get pending filings (those without content)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT f.id, f.ticker, f.filing_type, c.name
+        SELECT f.id, c.ticker, f.filing_type, c.name
         FROM filings f
-        JOIN companies c ON f.ticker = c.ticker
-        WHERE f.status = 'processed'
+        JOIN companies c ON f.company_id = c.id
+        WHERE f.status = 'pending'
         AND NOT EXISTS (
             SELECT 1 FROM content
             WHERE filing_id = f.id
-            AND status = 'published'
         )
         ORDER BY f.filing_date DESC
         LIMIT 50

@@ -77,7 +77,7 @@ class ClaudeAnalyzer(BaseAnalyzer):
             # Get filing S3 URL from database
             cursor = self.db_connection.cursor()
             cursor.execute(
-                "SELECT s3_url, html_s3_url FROM filings WHERE id = %s",
+                "SELECT raw_document_url FROM filings WHERE id = %s",
                 (filing_id,)
             )
 
@@ -87,7 +87,7 @@ class ClaudeAnalyzer(BaseAnalyzer):
             if not row:
                 raise FetchError(f"Filing {filing_id} not found")
 
-            s3_url = row[0] or row[1]  # Try s3_url first, fall back to html_s3_url
+            s3_url = row[0]
 
             if not s3_url:
                 raise FetchError(f"No S3 URL found for filing {filing_id}")
@@ -407,10 +407,10 @@ Respond with only valid JSON, no additional text."""
             # Get filing metadata
             cursor = self.db_connection.cursor()
             cursor.execute("""
-                SELECT f.ticker, f.filing_type, f.fiscal_year, f.fiscal_period,
+                SELECT c.ticker, f.filing_type, f.fiscal_year, f.fiscal_quarter,
                        f.filing_date, c.name as company_name
                 FROM filings f
-                JOIN companies c ON f.ticker = c.ticker
+                JOIN companies c ON f.company_id = c.id
                 WHERE f.id = %s
             """, (filing_id,))
 
@@ -420,11 +420,15 @@ Respond with only valid JSON, no additional text."""
             if not row:
                 raise AnalysisError(f"Filing {filing_id} not found")
 
+            # Convert fiscal_quarter back to fiscal_period format
+            fiscal_quarter = row[3]
+            fiscal_period = f'Q{fiscal_quarter}' if fiscal_quarter else 'FY'
+
             filing_metadata = {
                 'ticker': row[0],
                 'filing_type': row[1],
                 'fiscal_year': row[2],
-                'fiscal_period': row[3],
+                'fiscal_period': fiscal_period,
                 'filing_date': row[4].isoformat(),
                 'company_name': row[5]
             }
