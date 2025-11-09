@@ -533,49 +533,48 @@ Respond with only valid JSON, no additional text."""
         try:
             cursor = self.db_connection.cursor()
 
+            # Get company_id from filing_id
+            cursor.execute("SELECT company_id FROM filings WHERE id = %s", (result.filing_id,))
+            company_id = cursor.fetchone()[0]
+
+            # Map AnalysisResult to existing content table schema
+            # Combine deep analysis sections into text blocks
+            deep_dive_strategy = ""
+            if result.deep_sections:
+                for section in result.deep_sections:
+                    deep_dive_strategy += f"## {section['title']}\n\n{section['content']}\n\n"
+
             # Insert content record
             cursor.execute("""
                 INSERT INTO content (
                     filing_id,
-                    status,
-                    tldr_headline,
-                    tldr_summary,
-                    tldr_key_points,
-                    deep_headline,
-                    deep_intro,
-                    deep_sections,
-                    deep_conclusion,
-                    key_metrics,
-                    sentiment_score,
-                    risk_factors,
-                    opportunities,
-                    ai_model_version,
-                    ai_prompt_tokens,
-                    ai_completion_tokens,
-                    metadata
+                    company_id,
+                    executive_summary,
+                    key_takeaways,
+                    deep_dive_opportunities,
+                    deep_dive_risks,
+                    deep_dive_strategy,
+                    implications
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 result.filing_id,
-                status,
-                result.tldr_headline,
-                result.tldr_summary,
-                result.tldr_key_points,
-                result.deep_headline,
-                result.deep_intro,
-                json.dumps(result.deep_sections) if result.deep_sections else None,
-                result.deep_conclusion,
-                json.dumps(result.key_metrics) if result.key_metrics else None,
-                result.sentiment_score,
-                result.risk_factors,
-                result.opportunities,
-                result.model_version,
-                result.prompt_tokens,
-                result.completion_tokens,
-                {
-                    'analysis_duration_seconds': result.analysis_duration_seconds
-                }
+                company_id,
+                result.tldr_summary or result.deep_intro,
+                json.dumps({
+                    'headline': result.tldr_headline,
+                    'points': result.tldr_key_points,
+                    'metrics': result.key_metrics,
+                    'sentiment': result.sentiment_score,
+                    'model': result.model_version,
+                    'tokens': (result.prompt_tokens or 0) + (result.completion_tokens or 0),
+                    'duration': result.analysis_duration_seconds
+                }),
+                '\n\n'.join(result.opportunities) if result.opportunities else None,
+                '\n\n'.join(result.risk_factors) if result.risk_factors else None,
+                deep_dive_strategy if deep_dive_strategy else (result.deep_intro or ''),
+                result.deep_conclusion
             ))
 
             content_id = cursor.fetchone()[0]

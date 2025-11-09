@@ -115,14 +115,10 @@ This policy gives 10KAY exactly what it needs, nothing more:
       "Sid": "MarketplaceAccess",
       "Effect": "Allow",
       "Action": [
-        "aws-marketplace:ViewSubscriptions"
+        "aws-marketplace:ViewSubscriptions",
+        "aws-marketplace:Subscribe"
       ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": ["us-east-1", "us-west-2"]
-        }
-      }
+      "Resource": "*"
     }
   ]
 }
