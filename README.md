@@ -224,16 +224,17 @@ See `pipeline/README.md` for detailed documentation.
 - ✅ Database migrations applied (7 tables, 37 indexes, 3 views)
 - ✅ 47 companies seeded into database
 
-### 🔄 Phase 1: Core Content Engine (90% Complete)
+### ✅ Phase 1: Core Content Engine (Completed)
 - ✅ Python pipeline foundation with base classes
 - ✅ SEC EDGAR fetcher implementation (EdgarFetcher)
-- ✅ Claude AI analyzer implementation (ClaudeAnalyzer)
+- ✅ Claude AI analyzer implementation (ClaudeAnalyzer w/ Claude 3.5 Sonnet)
 - ✅ Blog post HTML generator (BlogGenerator)
 - ✅ Email newsletter publisher (EmailPublisher)
 - ✅ Main pipeline orchestrator with CLI
+- ✅ **Pipeline tested end-to-end:** Fetched Apple 10-K → Analyzed with Claude → Generated HTML
+- ✅ **Schema documentation:** SCHEMA.md with validation script
 - ⏭️ Next.js content display pages
 - ⏭️ API routes for frontend-backend integration
-- ⏭️ First test run of full pipeline
 
 ### Phase 2: Automation (Pending)
 - GitHub Actions workflows for 4x daily execution

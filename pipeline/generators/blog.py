@@ -667,11 +667,10 @@ class BlogGenerator(BaseGenerator):
             cursor.execute("""
                 UPDATE content
                 SET blog_html = %s,
-                    metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                    updated_at = NOW()
                 WHERE id = %s
             """, (
                 generated.output,
-                json.dumps({'blog_generation': generated.metadata}),
                 content_id
             ))
 
