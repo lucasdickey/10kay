@@ -275,6 +275,28 @@ See `pipeline/README.md` for detailed documentation.
 
 ---
 
+## Documentation
+
+### Core Documentation
+- **[SCHEMA.md](./SCHEMA.md)** - **⚡ START HERE** - Complete database schema documentation with:
+  - Actual vs expected schema mappings
+  - JSONB structure definitions
+  - Foreign key relationships
+  - Known issues and migration path
+- **[TECHNICAL_SPEC.md](./TECHNICAL_SPEC.md)** - Original technical specification and architecture
+- **[AWS_SETUP.md](./AWS_SETUP.md)** - AWS infrastructure setup guide
+- **[IAM_SETUP.md](./IAM_SETUP.md)** - IAM user and permissions configuration
+
+### Schema Validation
+Before making code changes that interact with the database, run:
+```bash
+python3 validate_schema.py
+```
+
+This validates that your code's assumptions match the actual database structure.
+
+---
+
 ## Contributing
 
 This is a solo project by [Lucas Dickey](https://github.com/lucasdickey), but suggestions and feedback are welcome!

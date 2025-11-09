@@ -172,9 +172,9 @@ def generate_phase(conn, logger, config):
     cursor.execute("""
         SELECT id, filing_id
         FROM content
-        WHERE status = 'published'
+        WHERE executive_summary IS NOT NULL
         AND (blog_html IS NULL OR email_html IS NULL)
-        ORDER BY published_at DESC
+        ORDER BY created_at DESC
         LIMIT 50
     """)
 

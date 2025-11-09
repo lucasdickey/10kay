@@ -57,27 +57,22 @@ class BlogGenerator(BaseGenerator):
             # Fetch content with filing and company info
             cursor.execute("""
                 SELECT
-                    c.tldr_headline,
-                    c.tldr_summary,
-                    c.tldr_key_points,
-                    c.deep_headline,
-                    c.deep_intro,
-                    c.deep_sections,
-                    c.deep_conclusion,
-                    c.key_metrics,
-                    c.sentiment_score,
-                    c.risk_factors,
-                    c.opportunities,
+                    c.executive_summary,
+                    c.key_takeaways,
+                    c.deep_dive_opportunities,
+                    c.deep_dive_risks,
+                    c.deep_dive_strategy,
+                    c.implications,
                     c.published_at,
-                    f.ticker,
+                    co.ticker,
                     f.filing_type,
                     f.fiscal_year,
-                    f.fiscal_period,
+                    f.fiscal_quarter,
                     f.filing_date,
                     co.name as company_name
                 FROM content c
                 JOIN filings f ON c.filing_id = f.id
-                JOIN companies co ON f.ticker = co.ticker
+                JOIN companies co ON f.company_id = co.id
                 WHERE c.id = %s
             """, (content_id,))
 
@@ -87,25 +82,34 @@ class BlogGenerator(BaseGenerator):
             if not row:
                 raise FetchError(f"Content {content_id} not found")
 
+            # Extract data from JSONB key_takeaways
+            key_takeaways = row[1] if isinstance(row[1], dict) else {}
+
+            # Convert fiscal_quarter to fiscal_period format
+            fiscal_quarter = row[10]
+            fiscal_period = f'Q{fiscal_quarter}' if fiscal_quarter else 'FY'
+
             return {
-                'tldr_headline': row[0],
-                'tldr_summary': row[1],
-                'tldr_key_points': row[2],
-                'deep_headline': row[3],
-                'deep_intro': row[4],
-                'deep_sections': json.loads(row[5]) if row[5] else [],
-                'deep_conclusion': row[6],
-                'key_metrics': json.loads(row[7]) if row[7] else {},
-                'sentiment_score': row[8],
-                'risk_factors': row[9] or [],
-                'opportunities': row[10] or [],
-                'published_at': row[11],
-                'ticker': row[12],
-                'filing_type': row[13],
-                'fiscal_year': row[14],
-                'fiscal_period': row[15],
-                'filing_date': row[16],
-                'company_name': row[17]
+                'executive_summary': row[0],
+                'tldr_headline': key_takeaways.get('headline', ''),
+                'tldr_summary': row[0][:500] if row[0] else '',  # First 500 chars
+                'tldr_key_points': key_takeaways.get('points', []),
+                'deep_headline': key_takeaways.get('headline', ''),
+                'deep_intro': row[0],  # executive_summary
+                'deep_sections': [],  # Parsed from deep_dive_strategy
+                'deep_conclusion': row[5],  # implications
+                'key_metrics': key_takeaways.get('metrics', {}),
+                'sentiment_score': key_takeaways.get('sentiment'),
+                'risk_factors': row[3].split('\n\n') if row[3] else [],
+                'opportunities': row[2].split('\n\n') if row[2] else [],
+                'deep_dive_strategy': row[4],
+                'published_at': row[6],
+                'ticker': row[7],
+                'filing_type': row[8],
+                'fiscal_year': row[9],
+                'fiscal_period': fiscal_period,
+                'filing_date': row[11],
+                'company_name': row[12]
             }
 
         except Exception as e:
