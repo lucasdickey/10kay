@@ -208,7 +208,7 @@ class ClaudeAnalyzer(BaseAnalyzer):
 
         if analysis_type == AnalysisType.QUICK_SUMMARY:
             # TLDR prompt (free tier)
-            prompt = f"""Analyze this {filing_type} filing for {company_name} ({fiscal_period}) and provide a concise summary for tech-savvy operators.
+            prompt = f"""Analyze this {filing_type} filing for {company_name} ({fiscal_period}) and provide a substantive summary for tech-savvy operators.
 
 **Context:**
 - Company: {company_name} ({filing_metadata['ticker']})
@@ -222,27 +222,42 @@ class ClaudeAnalyzer(BaseAnalyzer):
 Generate a TLDR summary in JSON format with the following structure:
 {{
   "headline": "Attention-grabbing one-line summary (8-12 words)",
-  "summary": "2-3 sentence overview highlighting the most important findings",
-  "key_points": ["Bullet point 1", "Bullet point 2", "Bullet point 3"],
+  "summary": "4-6 sentence overview providing substantive context. Start with the headline insight, then explain what changed and why it matters. Include 2-3 specific metrics or examples. End with forward-looking implications.",
+  "key_points": [
+    {{
+      "title": "Financial Performance Overview",
+      "description": "2-3 sentence explanation with specific numbers and YoY comparisons"
+    }},
+    {{
+      "title": "Strategic Shift or Key Theme",
+      "description": "2-3 sentence explanation of what changed and implications"
+    }},
+    {{
+      "title": "Market Position or Competitive Dynamics",
+      "description": "2-3 sentence explanation with context and nuance"
+    }}
+  ],
   "sentiment_score": 0.5,  // -1 (very negative) to 1 (very positive)
   "key_metrics": {{
-    "revenue": "value with context",
-    "growth_rate": "value with context",
-    // other important metrics
+    "revenue": "value with YoY/QoQ context",
+    "growth_rate": "value with trend analysis",
+    "margins": "gross and operating with basis point changes",
+    // 5-7 other critical metrics with context
   }}
 }}
 
 **Style Guide:**
-- Tone: Bloomberg Terminal meets The Diff (Byrne Hobart) - direct, analytical, no fluff
-- Audience: Tech operators, founders, investors who read fast
-- Focus: What matters for decision-making, not what's legally required
-- Avoid: Corporate speak, obvious statements, generic analysis
+- Tone: Bloomberg Terminal meets The Diff (Byrne Hobart) - direct, analytical, substantive
+- Audience: Tech operators, founders, investors who want actionable insights
+- Focus: What matters for decision-making, strategic implications, second-order effects
+- Include: Specific numbers, comparisons, context, nuance
+- Avoid: Corporate speak, obvious statements, generic analysis, vague descriptions
 
 Respond with only valid JSON, no additional text."""
 
         else:
             # Deep analysis prompt (paid tier)
-            prompt = f"""Perform a comprehensive analysis of this {filing_type} filing for {company_name} ({fiscal_period}).
+            prompt = f"""Perform a comprehensive, substantive analysis of this {filing_type} filing for {company_name} ({fiscal_period}). This should be a 5-7 minute read with deep insights.
 
 **Context:**
 - Company: {company_name} ({filing_metadata['ticker']})
@@ -256,38 +271,90 @@ Respond with only valid JSON, no additional text."""
 Generate a deep analysis in JSON format:
 {{
   "headline": "Compelling headline (8-15 words)",
-  "intro": "2-3 paragraph introduction setting up the key themes",
+  "tldr": {{
+    "summary": "4-6 sentence overview providing substantive context. Start with the headline insight, then explain what changed and why it matters. Include 2-3 specific metrics or examples. End with forward-looking implications.",
+    "key_points": [
+      {{
+        "title": "Financial Performance Overview",
+        "description": "2-3 sentence explanation with specific numbers and YoY comparisons"
+      }},
+      {{
+        "title": "Strategic Shift or Key Theme",
+        "description": "2-3 sentence explanation of what changed and implications"
+      }},
+      {{
+        "title": "Market Position or Competitive Dynamics",
+        "description": "2-3 sentence explanation with context and nuance"
+      }}
+    ]
+  }},
+  "intro": "4-6 substantive paragraphs (250-350 words total) setting up the key themes. Start with the headline insight in context. Explain what changed YoY/QoQ with specific numbers. Identify 2-3 major themes. Provide competitive context. End with what this means for the business trajectory.",
   "sections": [
     {{
-      "title": "Section Title",
-      "content": "2-4 paragraphs of analysis with specific details and implications"
+      "title": "Financial Performance Deep Dive",
+      "content": "6-8 paragraphs (400-600 words). Break down revenue by segment with YoY/QoQ trends. Analyze margin expansion/compression with drivers. Discuss cash flow and capital allocation. Compare to peers. Identify inflection points or concerning trends. Include specific numbers, percentages, and basis point changes throughout."
     }},
-    // 4-6 sections covering: financial performance, strategic moves, risks, opportunities, market position
+    {{
+      "title": "Strategic Shifts and Product Evolution",
+      "content": "6-8 paragraphs (400-600 words). Analyze new product launches, R&D investments, strategic pivots. Discuss go-to-market changes. Examine partnerships and M&A. Connect product strategy to financials. Assess competitive positioning. Include forward-looking indicators from management commentary."
+    }},
+    {{
+      "title": "Market Dynamics and Competitive Position",
+      "content": "5-7 paragraphs (350-500 words). Assess market share trends. Analyze competitive threats and advantages. Discuss regulatory environment. Examine customer concentration and churn. Include macroeconomic factors affecting the business."
+    }},
+    {{
+      "title": "Risk Factors and Headwinds",
+      "content": "5-7 paragraphs (350-500 words). Deep dive into material risks from filing. Assess likelihood and potential impact. Discuss management's mitigation strategies. Compare to prior periods. Include second-order effects."
+    }},
+    {{
+      "title": "Growth Opportunities and Catalysts",
+      "content": "5-7 paragraphs (350-500 words). Identify untapped markets and expansion opportunities. Analyze operational leverage potential. Discuss innovation pipeline. Assess M&A potential. Include TAM analysis where relevant."
+    }}
   ],
-  "conclusion": "2-3 paragraphs synthesizing insights and forward-looking implications",
+  "conclusion": "5-6 paragraphs (300-400 words) synthesizing insights and forward-looking implications. Recap the 2-3 most important themes. Assess whether the business is accelerating or decelerating. Identify key metrics to watch in next quarter. Provide actionable takeaways for operators. End with contrarian or non-obvious insight.",
   "key_metrics": {{
-    "revenue": "detailed metrics with YoY comparisons",
-    "margins": "...",
-    "growth_indicators": "...",
-    // comprehensive financial snapshot
+    "revenue": "$XXX.XB (±X.X% YoY, ±X.X% QoQ) with segment breakdown and trend analysis",
+    "gross_margin": "XX.X% (±XXbps YoY) with drivers explanation",
+    "operating_margin": "XX.X% (±XXbps YoY) with efficiency analysis",
+    "free_cash_flow": "$XXB (±X% YoY) with conversion rate",
+    "growth_indicators": {{
+      "customer_count": "details with growth rate",
+      "arr_or_bookings": "details with trends",
+      "retention_metrics": "details with cohort analysis"
+    }},
+    // 8-12 critical metrics total with full context
   }},
   "sentiment_score": 0.5,
-  "risk_factors": ["Top risk 1", "Top risk 2", "Top risk 3"],
-  "opportunities": ["Key opportunity 1", "Key opportunity 2", "Key opportunity 3"]
+  "risk_factors": [
+    "Specific risk 1 with quantified impact assessment",
+    "Specific risk 2 with likelihood and mitigation strategy",
+    "Specific risk 3 with industry context",
+    "Specific risk 4 if material"
+  ],
+  "opportunities": [
+    "Specific opportunity 1 with TAM/market size context",
+    "Specific opportunity 2 with timeline and barriers to entry",
+    "Specific opportunity 3 with competitive advantage analysis",
+    "Specific opportunity 4 if material"
+  ]
 }}
 
 **Analysis Framework:**
-1. **What Changed**: YoY/QoQ comparisons, inflection points
-2. **Why It Matters**: Strategic implications, competitive dynamics
-3. **What's Next**: Forward-looking indicators, management guidance
-4. **The Nuance**: What others might miss, second-order effects
+1. **What Changed**: YoY/QoQ comparisons, inflection points, trend reversals
+2. **Why It Matters**: Strategic implications, competitive dynamics, market share shifts
+3. **What's Next**: Forward-looking indicators, management guidance, pipeline visibility
+4. **The Nuance**: What others might miss, second-order effects, non-obvious correlations
+5. **The Contrarian Take**: Challenge conventional wisdom, identify misunderstood aspects
 
 **Style Guide:**
-- Tone: Bloomberg Terminal meets TBPN - authoritative, insightful, opinionated
-- Audience: Sophisticated tech operators who want deep understanding
-- Focus: Strategic narrative, not just numbers
-- Include: Specific figures, direct quotes, concrete examples
-- Avoid: Hedging language, surface-level observations
+- Tone: Bloomberg Terminal meets Stratechery - authoritative, insightful, opinionated, substantive
+- Audience: Sophisticated tech operators, founders, investors who want deep understanding
+- Length: Each section should be 350-600 words for a total 5-7 minute read (2000-3000 words)
+- Focus: Strategic narrative woven with numbers, not just data dumps
+- Include: Specific figures, YoY/QoQ comparisons, segment breakdowns, direct quotes, concrete examples
+- Avoid: Hedging language, surface-level observations, obvious points, filler content
+
+**Critical**: This is PAID tier content. Make it substantially deeper and more insightful than a free summary.
 
 Respond with only valid JSON, no additional text."""
 
@@ -472,12 +539,13 @@ Respond with only valid JSON, no additional text."""
                 )
             else:
                 # Deep analysis includes both TLDR and deep content
+                tldr = analysis_data.get('tldr', {})
                 result = AnalysisResult(
                     filing_id=filing_id,
-                    # TLDR (for free tier users)
+                    # TLDR (for free tier users) - now from dedicated tldr section
                     tldr_headline=analysis_data['headline'],
-                    tldr_summary=analysis_data['intro'][:500],  # First 500 chars of intro
-                    tldr_key_points=[s['title'] for s in analysis_data['sections'][:3]],
+                    tldr_summary=tldr.get('summary', analysis_data['intro'][:500]),  # Fallback to intro if no tldr
+                    tldr_key_points=tldr.get('key_points', [s['title'] for s in analysis_data['sections'][:3]]),  # Fallback to sections
                     # Deep analysis (for paid tier)
                     deep_headline=analysis_data['headline'],
                     deep_intro=analysis_data['intro'],

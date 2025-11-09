@@ -278,6 +278,9 @@ class EdgarFetcher(BaseFetcher):
         """
         Download the actual filing document
 
+        Prioritizes plain text (.txt) complete submission file over HTML to avoid
+        iXBRL viewer files that require JavaScript and contain no actual content.
+
         Args:
             filing: FilingMetadata with document_url
 
@@ -291,16 +294,57 @@ class EdgarFetcher(BaseFetcher):
             self.logger.debug(f"Downloading filing {filing.accession_number}")
 
         try:
-            # First, navigate to the filing page to find the actual document
+            # SEC filing URL pattern:
+            # https://www.sec.gov/Archives/edgar/data/{CIK}/{accession_no_dashes}/{accession_no}.txt
+            # Example: https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/0000320193-25-000079.txt
+
+            # Use CIK from FilingMetadata (already available)
+            cik = filing.cik
+            if not cik:
+                raise DownloadError("No CIK available in filing metadata")
+
+            accession_no_dashes = filing.accession_number.replace('-', '')
+
+            # Try to download complete submission text file first
+            txt_url = f"{self.base_url}/Archives/edgar/data/{cik}/{accession_no_dashes}/{filing.accession_number}.txt"
+
+            if self.logger:
+                self.logger.debug(f"Attempting to download plain text version: {txt_url}")
+
+            try:
+                response = self._make_request(txt_url)
+
+                # Verify we got actual content (not an error page)
+                if response.status_code == 200 and len(response.content) > 10000:
+                    if self.logger:
+                        self.logger.info(
+                            f"Downloaded plain text filing: {len(response.content)} bytes",
+                            extra={'url': txt_url}
+                        )
+
+                    # Store URL for reference
+                    filing.html_url = txt_url
+                    return response.content
+                else:
+                    if self.logger:
+                        self.logger.debug(f"Plain text file too small or not found, trying HTML")
+
+            except Exception as txt_error:
+                if self.logger:
+                    self.logger.debug(f"Plain text download failed: {txt_error}, trying HTML")
+
+            # Fallback: Navigate to filing page and find HTML document
             response = self._make_request(filing.document_url)
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Find the link to the actual filing document (usually .htm or .html)
+            # Find the link to the actual filing document (avoid iXBRL viewer)
             doc_table = soup.find('table', {'class': 'tableFile'})
             if not doc_table:
                 raise DownloadError("Could not find document table")
 
             # Look for the main filing document (Type column = filing type)
+            # Prefer non-iXBRL files
+            doc_url = None
             for row in doc_table.find_all('tr')[1:]:
                 cols = row.find_all('td')
                 if len(cols) < 4:
@@ -311,10 +355,13 @@ class EdgarFetcher(BaseFetcher):
                     doc_link = cols[2].find('a')
                     if doc_link:
                         doc_href = doc_link['href']
-                        doc_url = f"{self.base_url}{doc_href}"
-                        break
-            else:
-                raise DownloadError("Could not find main filing document")
+                        # Skip iXBRL files (they're just viewers with JavaScript)
+                        if 'ixv' not in doc_href.lower() and 'viewer' not in doc_href.lower():
+                            doc_url = f"{self.base_url}{doc_href}"
+                            break
+
+            if not doc_url:
+                raise DownloadError("Could not find suitable filing document")
 
             # Download the actual document
             response = self._make_request(doc_url)
@@ -323,8 +370,8 @@ class EdgarFetcher(BaseFetcher):
             filing.html_url = doc_url
 
             if self.logger:
-                self.logger.debug(
-                    f"Downloaded {len(response.content)} bytes",
+                self.logger.info(
+                    f"Downloaded HTML filing: {len(response.content)} bytes",
                     extra={'url': doc_url}
                 )
 
@@ -347,12 +394,17 @@ class EdgarFetcher(BaseFetcher):
         Raises:
             UploadError: If upload fails
         """
-        # Build S3 key: {ticker}/{fiscal_year}/{filing_type}/{accession_number}.html
+        # Determine file extension based on what was downloaded
+        # filing.html_url is set in download_filing() to the actual URL used
+        file_ext = '.txt' if filing.html_url and filing.html_url.endswith('.txt') else '.html'
+        content_type = 'text/plain' if file_ext == '.txt' else 'text/html'
+
+        # Build S3 key: {ticker}/{fiscal_year}/{filing_type}/{accession_number}.{ext}
         s3_key = (
             f"{filing.ticker}/"
             f"{filing.fiscal_year}/"
             f"{filing.filing_type.value}/"
-            f"{filing.accession_number}.html"
+            f"{filing.accession_number}{file_ext}"
         )
 
         bucket = self.config.aws.s3_filings_bucket
@@ -363,7 +415,7 @@ class EdgarFetcher(BaseFetcher):
                 Bucket=bucket,
                 Key=s3_key,
                 Body=content,
-                ContentType='text/html',
+                ContentType=content_type,
                 Metadata={
                     'ticker': filing.ticker,
                     'filing_type': filing.filing_type.value,

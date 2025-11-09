@@ -226,7 +226,7 @@ class BlogGenerator(BaseGenerator):
             <h2 class="tldr-title">TL;DR</h2>
             <p class="tldr-summary">{content['tldr_summary']}</p>
             <ul class="tldr-points">
-                {''.join(f'<li>{point}</li>' for point in content['tldr_key_points'])}
+                {''.join(f'<li><strong>{point["title"]}</strong>: {point["description"]}</li>' if isinstance(point, dict) else f'<li>{point}</li>' for point in content['tldr_key_points'])}
             </ul>
         </aside>
 
