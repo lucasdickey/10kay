@@ -559,10 +559,21 @@ class BlogGenerator(BaseGenerator):
             # Format label
             label_formatted = label.replace('_', ' ').title()
 
+            # Handle nested dicts (like growth_indicators)
+            if isinstance(value, dict):
+                # Format nested dict as bullet list
+                value_html = '<ul style="margin: 0; padding-left: 1.2rem; font-size: 0.875rem;">'
+                for sub_label, sub_value in value.items():
+                    sub_label_formatted = sub_label.replace('_', ' ').title()
+                    value_html += f'<li>{sub_label_formatted}: {sub_value}</li>'
+                value_html += '</ul>'
+            else:
+                value_html = str(value)
+
             cards.append(f"""
                 <div class="metric-card">
                     <div class="metric-label">{label_formatted}</div>
-                    <div class="metric-value">{value}</div>
+                    <div class="metric-value">{value_html}</div>
                 </div>
             """)
 
