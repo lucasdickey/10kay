@@ -695,6 +695,597 @@ Return as JSON:
 
 ---
 
+## Vector Embeddings Architecture
+
+### Overview
+
+Vector embeddings enable semantic search, cross-company analysis, and AI-powered chatbot functionality by converting text into high-dimensional numerical representations that capture semantic meaning.
+
+**Use Cases:**
+1. **Cross-Company Comparisons:** "Show me all companies reporting cloud revenue growth >20%"
+2. **Semantic Search:** "Find filings discussing AI infrastructure investments"
+3. **Chatbot/RAG:** Real-time Q&A over the entire dataset ("What are common regulatory risks in cloud businesses?")
+4. **Trend Analysis:** Identify emerging themes across multiple filings
+5. **Similar Content Discovery:** "Find filings similar to NVDA's latest 10-K"
+
+### Embedding Strategy
+
+**Two-Tier Approach:**
+
+1. **Document Embeddings** - Store embeddings for raw filing content (flat files)
+   - Chunk size: 1000 tokens with 200 token overlap
+   - Use case: Retrieve relevant sections for context when answering questions
+   - Table: `document_embeddings`
+
+2. **Analysis Embeddings** - Store embeddings for AI-generated analysis
+   - Chunk size: Full analysis sections (executive_summary, opportunities, risks, etc.)
+   - Use case: Find similar analyses, compare strategic themes across companies
+   - Table: `analysis_embeddings`
+
+### Database Schema
+
+#### `document_embeddings`
+
+Stores vector embeddings for raw SEC filing content (chunked).
+
+```sql
+CREATE TABLE document_embeddings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filing_id UUID REFERENCES filings(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+
+  -- Content metadata
+  chunk_index INTEGER NOT NULL, -- Position in document (0, 1, 2, ...)
+  content_text TEXT NOT NULL, -- Original text chunk
+  token_count INTEGER, -- Tokens in this chunk
+
+  -- Embedding vector
+  embedding VECTOR(1024), -- Using pgvector extension (Bedrock Titan Embeddings v2)
+
+  -- Metadata
+  section_type VARCHAR(50), -- 'business_overview', 'risk_factors', 'mda', 'financials', etc.
+  page_number INTEGER, -- Approximate page in original PDF
+  embedding_model VARCHAR(100) DEFAULT 'amazon.titan-embed-text-v2:0',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for fast similarity search
+CREATE INDEX idx_doc_embeddings_filing ON document_embeddings(filing_id);
+CREATE INDEX idx_doc_embeddings_company ON document_embeddings(company_id);
+CREATE INDEX idx_doc_embeddings_vector ON document_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+```
+
+**Key Design Decisions:**
+- **Vector Dimension:** 1024 (Amazon Titan Embeddings v2 default)
+- **Index Type:** IVFFlat (Inverted File with Flat compression) - good balance of speed and recall
+- **Distance Metric:** Cosine similarity (most common for text embeddings)
+
+---
+
+#### `analysis_embeddings`
+
+Stores vector embeddings for AI-generated analysis sections.
+
+```sql
+CREATE TABLE analysis_embeddings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content_id UUID REFERENCES content(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  filing_id UUID REFERENCES filings(id) ON DELETE CASCADE,
+
+  -- Content metadata
+  section_name VARCHAR(50) NOT NULL, -- 'executive_summary', 'opportunities', 'risks', etc.
+  content_text TEXT NOT NULL, -- The actual analysis text
+  token_count INTEGER,
+
+  -- Embedding vector
+  embedding VECTOR(1024),
+
+  -- Metadata
+  filing_type VARCHAR(10), -- '10-K' or '10-Q' for filtering
+  fiscal_year INTEGER,
+  fiscal_quarter INTEGER,
+  ticker VARCHAR(10), -- Denormalized for easier querying
+  embedding_model VARCHAR(100) DEFAULT 'amazon.titan-embed-text-v2:0',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_analysis_embeddings_content ON analysis_embeddings(content_id);
+CREATE INDEX idx_analysis_embeddings_company ON analysis_embeddings(company_id);
+CREATE INDEX idx_analysis_embeddings_section ON analysis_embeddings(section_name);
+CREATE INDEX idx_analysis_embeddings_ticker ON analysis_embeddings(ticker);
+CREATE INDEX idx_analysis_embeddings_vector ON analysis_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+```
+
+**Why Separate Tables:**
+- Different chunking strategies (document chunks vs semantic sections)
+- Different query patterns (document retrieval vs analysis comparison)
+- Different update frequencies (documents are immutable, analyses may be versioned)
+- Clearer separation of concerns
+
+---
+
+### Embedding Generation Pipeline
+
+**New Pipeline Phase:** `embed` (runs after `analyze` phase)
+
+```python
+# pipeline/embedders/bedrock_embedder.py
+
+import boto3
+import json
+from typing import List, Dict
+
+class BedrockEmbedder:
+    """Generate embeddings using Amazon Titan Embeddings v2"""
+
+    def __init__(self):
+        self.bedrock = boto3.client(
+            service_name='bedrock-runtime',
+            region_name='us-east-1'
+        )
+        self.model_id = 'amazon.titan-embed-text-v2:0'
+        self.dimension = 1024
+
+    def embed_text(self, text: str) -> List[float]:
+        """Generate embedding for a single text string"""
+        response = self.bedrock.invoke_model(
+            modelId=self.model_id,
+            body=json.dumps({
+                "inputText": text,
+                "dimensions": self.dimension,
+                "normalize": True  # L2 normalization for cosine similarity
+            })
+        )
+
+        result = json.loads(response['body'].read())
+        return result['embedding']
+
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Batch embedding generation (more efficient)"""
+        # Bedrock Titan supports batch inference
+        embeddings = []
+        for text in texts:
+            embeddings.append(self.embed_text(text))
+        return embeddings
+
+    def chunk_document(self, text: str, chunk_size: int = 1000,
+                       overlap: int = 200) -> List[Dict]:
+        """Split document into overlapping chunks for embedding"""
+        # Simple token-based chunking
+        # TODO: Implement semantic chunking (split on paragraphs/sections)
+        words = text.split()
+        chunks = []
+
+        for i in range(0, len(words), chunk_size - overlap):
+            chunk_words = words[i:i + chunk_size]
+            chunk_text = ' '.join(chunk_words)
+
+            chunks.append({
+                'index': len(chunks),
+                'text': chunk_text,
+                'token_count': len(chunk_words)
+            })
+
+        return chunks
+```
+
+**Integration into Pipeline:**
+
+```python
+# pipeline/main.py - Add embed phase
+
+async def run_pipeline():
+    phases = {
+        'fetch': FetchPhase(),
+        'analyze': AnalyzePhase(),
+        'embed': EmbedPhase(),      # ← NEW PHASE
+        'generate': GeneratePhase(),
+        'publish': PublishPhase()
+    }
+
+    # Process in order
+    for phase_name, phase in phases.items():
+        await phase.run()
+
+# pipeline/embedders/__init__.py
+class EmbedPhase:
+    """Generate and store vector embeddings for documents and analyses"""
+
+    async def run(self):
+        # 1. Find filings that need embeddings
+        filings = await db.get_filings_without_embeddings()
+
+        for filing in filings:
+            # Generate document embeddings (chunked)
+            await self.embed_document(filing)
+
+            # Generate analysis embeddings (by section)
+            await self.embed_analysis(filing)
+
+    async def embed_document(self, filing):
+        """Chunk and embed raw filing content"""
+        document_text = await s3.get_filing_content(filing.raw_document_url)
+        chunks = embedder.chunk_document(document_text)
+
+        for chunk in chunks:
+            embedding = embedder.embed_text(chunk['text'])
+
+            await db.insert_document_embedding(
+                filing_id=filing.id,
+                company_id=filing.company_id,
+                chunk_index=chunk['index'],
+                content_text=chunk['text'],
+                token_count=chunk['token_count'],
+                embedding=embedding
+            )
+
+    async def embed_analysis(self, filing):
+        """Embed AI-generated analysis sections"""
+        content = await db.get_content_by_filing(filing.id)
+
+        sections = {
+            'executive_summary': content.executive_summary,
+            'opportunities': content.deep_dive_opportunities,
+            'risks': content.deep_dive_risks,
+            'strategy': content.deep_dive_strategy,
+            'implications': content.implications
+        }
+
+        for section_name, section_text in sections.items():
+            if section_text:
+                embedding = embedder.embed_text(section_text)
+
+                await db.insert_analysis_embedding(
+                    content_id=content.id,
+                    company_id=filing.company_id,
+                    filing_id=filing.id,
+                    section_name=section_name,
+                    content_text=section_text,
+                    embedding=embedding,
+                    ticker=filing.company.ticker,
+                    filing_type=filing.filing_type,
+                    fiscal_year=filing.fiscal_year,
+                    fiscal_quarter=filing.fiscal_quarter
+                )
+```
+
+---
+
+### Query Examples
+
+#### 1. Semantic Search Across All Filings
+
+```sql
+-- Find filings discussing "AI infrastructure investments"
+WITH query_embedding AS (
+  -- In practice, this would come from embedding the query text
+  SELECT embedding FROM document_embeddings LIMIT 1
+)
+SELECT
+  f.company_id,
+  c.ticker,
+  c.name,
+  de.content_text,
+  1 - (de.embedding <=> query_embedding.embedding) AS similarity
+FROM document_embeddings de
+JOIN filings f ON de.filing_id = f.id
+JOIN companies c ON f.company_id = c.id
+CROSS JOIN query_embedding
+ORDER BY de.embedding <=> query_embedding.embedding
+LIMIT 20;
+```
+
+#### 2. Find Similar Analyses
+
+```sql
+-- Find companies with similar risk profiles to NVDA
+WITH nvda_risks AS (
+  SELECT ae.embedding
+  FROM analysis_embeddings ae
+  JOIN companies c ON ae.company_id = c.id
+  WHERE c.ticker = 'NVDA'
+    AND ae.section_name = 'risks'
+  ORDER BY ae.created_at DESC
+  LIMIT 1
+)
+SELECT
+  c.ticker,
+  c.name,
+  ae.content_text,
+  1 - (ae.embedding <=> nvda_risks.embedding) AS similarity
+FROM analysis_embeddings ae
+JOIN companies c ON ae.company_id = c.id
+CROSS JOIN nvda_risks
+WHERE ae.section_name = 'risks'
+  AND c.ticker != 'NVDA'
+ORDER BY ae.embedding <=> nvda_risks.embedding
+LIMIT 10;
+```
+
+#### 3. Cross-Company Theme Analysis
+
+```sql
+-- Find all analyses mentioning cloud revenue growth (using semantic search)
+-- First, embed the query "cloud revenue growth acceleration"
+-- Then search analysis embeddings
+
+SELECT
+  c.ticker,
+  f.filing_type,
+  f.fiscal_year,
+  ae.section_name,
+  LEFT(ae.content_text, 200) as snippet,
+  1 - (ae.embedding <=> :query_embedding) AS relevance
+FROM analysis_embeddings ae
+JOIN companies c ON ae.company_id = c.id
+JOIN filings f ON ae.filing_id = f.id
+WHERE ae.section_name IN ('opportunities', 'executive_summary')
+ORDER BY ae.embedding <=> :query_embedding
+LIMIT 50;
+```
+
+---
+
+### API Endpoints for Vector Search
+
+#### `POST /api/search/semantic`
+
+Semantic search across all content.
+
+```typescript
+// Request
+{
+  "query": "companies investing in AI chips",
+  "filters": {
+    "tickers": ["NVDA", "AMD", "INTC"],  // optional
+    "filing_types": ["10-K"],             // optional
+    "fiscal_year": 2024,                  // optional
+    "section_types": ["opportunities", "strategy"]  // optional
+  },
+  "limit": 20
+}
+
+// Response
+{
+  "results": [
+    {
+      "company": {"ticker": "NVDA", "name": "NVIDIA Corporation"},
+      "filing": {"type": "10-K", "fiscal_year": 2024},
+      "section": "opportunities",
+      "text": "Our AI chip architecture...",
+      "relevance_score": 0.89
+    },
+    // ...
+  ]
+}
+```
+
+#### `POST /api/companies/similar`
+
+Find companies with similar strategic profiles.
+
+```typescript
+// Request
+{
+  "ticker": "NVDA",
+  "section": "strategy",  // compare based on strategic shifts
+  "limit": 10
+}
+
+// Response
+{
+  "reference": {
+    "ticker": "NVDA",
+    "name": "NVIDIA Corporation"
+  },
+  "similar_companies": [
+    {
+      "ticker": "AMD",
+      "name": "Advanced Micro Devices",
+      "similarity_score": 0.82,
+      "common_themes": ["AI acceleration", "datacenter growth"]
+    },
+    // ...
+  ]
+}
+```
+
+#### `POST /api/chat`
+
+RAG-powered chatbot over all filings.
+
+```typescript
+// Request
+{
+  "message": "What are the main regulatory risks for cloud companies?",
+  "context": {
+    "include_tickers": ["AMZN", "MSFT", "GOOGL"],  // optional filter
+    "fiscal_year": 2024
+  }
+}
+
+// Response
+{
+  "answer": "Based on recent 10-K filings, the main regulatory risks for cloud companies include...",
+  "sources": [
+    {
+      "company": {"ticker": "AMZN", "name": "Amazon"},
+      "filing": {"type": "10-K", "fiscal_year": 2024},
+      "section": "risk_factors",
+      "excerpt": "Government regulation of the Internet...",
+      "relevance": 0.91
+    },
+    // ...
+  ]
+}
+```
+
+---
+
+### Technology Stack Additions
+
+**PostgreSQL Extension:**
+```sql
+-- Install pgvector extension for vector similarity search
+CREATE EXTENSION vector;
+
+-- Verify installation
+SELECT * FROM pg_available_extensions WHERE name = 'vector';
+```
+
+**Python Dependencies:**
+
+```python
+# pipeline/requirements.txt additions
+pgvector>=0.2.0         # Vector data type support
+tiktoken>=0.5.0         # Token counting for chunking
+```
+
+**AWS Services:**
+- **Amazon Titan Embeddings v2** via Bedrock (already have access)
+  - Dimension: 1024
+  - Cost: $0.0001 per 1,000 input tokens (negligible)
+  - Supports batch inference
+
+**Alternative Embedding Models (for consideration):**
+- OpenAI `text-embedding-3-large` (3072 dimensions, higher quality but more expensive)
+- Cohere `embed-english-v3.0` (1024 dimensions, optimized for semantic search)
+- Custom fine-tuned model (future Phase 7+)
+
+---
+
+### Cost Estimates
+
+**Embedding Generation:**
+- **Per Filing:**
+  - 10-K: ~50-100k tokens → ~50-100 chunks → $0.005-0.01 per filing
+  - 10-Q: ~20-40k tokens → ~20-40 chunks → $0.002-0.004 per filing
+- **Annual Volume (50 companies):**
+  - 50 companies × 5 filings/year × $0.007 avg = **$1.75/year** (negligible)
+
+**Storage:**
+- **Vector Storage:**
+  - 1024 dimensions × 4 bytes (float32) = 4KB per embedding
+  - 50 companies × 5 filings × 50 chunks avg = 12,500 embeddings
+  - 12,500 × 4KB = 50MB vector data
+  - PostgreSQL storage: **~$0.01/month** (covered by AWS credits)
+
+**Query Performance:**
+- IVFFlat index with 100 lists: <100ms for similarity search over 10K+ vectors
+- Sufficient for real-time chatbot responses
+
+---
+
+### Implementation Phases
+
+#### Phase 2.5: Vector Embeddings Foundation (New)
+
+**Priority:** Medium (enables advanced features, not blocking for MVP)
+
+**Tasks:**
+1. Install pgvector extension on RDS PostgreSQL
+2. Create document_embeddings and analysis_embeddings tables
+3. Implement BedrockEmbedder class (Amazon Titan)
+4. Add embed phase to pipeline
+5. Test embedding generation on 5 sample filings
+6. Create vector similarity search API endpoints
+7. Build basic semantic search UI component
+
+**Deliverable:** Vector search working for historical analyses
+
+**Dependencies:** Phase 1 (Core Content Engine) must be complete
+
+---
+
+#### Phase 6.5: RAG Chatbot (Future)
+
+**Priority:** Low (high value but not MVP-critical)
+
+**Tasks:**
+1. Implement RAG pipeline (query → retrieve → generate)
+2. Build chatbot UI component
+3. Add conversation history tracking
+4. Implement context window management
+5. Add citation/source attribution
+6. A/B test different retrieval strategies
+7. Fine-tune prompt templates for Q&A
+
+**Deliverable:** Production-ready chatbot interface
+
+**Dependencies:** Phase 2.5 (Vector Embeddings Foundation)
+
+---
+
+### Migration Script
+
+```sql
+-- Migration 008: Add Vector Embeddings Support
+
+-- Install pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create document_embeddings table
+CREATE TABLE document_embeddings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filing_id UUID REFERENCES filings(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL,
+  content_text TEXT NOT NULL,
+  token_count INTEGER,
+  embedding VECTOR(1024),
+  section_type VARCHAR(50),
+  page_number INTEGER,
+  embedding_model VARCHAR(100) DEFAULT 'amazon.titan-embed-text-v2:0',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create analysis_embeddings table
+CREATE TABLE analysis_embeddings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content_id UUID REFERENCES content(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  filing_id UUID REFERENCES filings(id) ON DELETE CASCADE,
+  section_name VARCHAR(50) NOT NULL,
+  content_text TEXT NOT NULL,
+  token_count INTEGER,
+  embedding VECTOR(1024),
+  filing_type VARCHAR(10),
+  fiscal_year INTEGER,
+  fiscal_quarter INTEGER,
+  ticker VARCHAR(10),
+  embedding_model VARCHAR(100) DEFAULT 'amazon.titan-embed-text-v2:0',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for document_embeddings
+CREATE INDEX idx_doc_embeddings_filing ON document_embeddings(filing_id);
+CREATE INDEX idx_doc_embeddings_company ON document_embeddings(company_id);
+CREATE INDEX idx_doc_embeddings_vector ON document_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+
+-- Create indexes for analysis_embeddings
+CREATE INDEX idx_analysis_embeddings_content ON analysis_embeddings(content_id);
+CREATE INDEX idx_analysis_embeddings_company ON analysis_embeddings(company_id);
+CREATE INDEX idx_analysis_embeddings_section ON analysis_embeddings(section_name);
+CREATE INDEX idx_analysis_embeddings_ticker ON analysis_embeddings(ticker);
+CREATE INDEX idx_analysis_embeddings_vector ON analysis_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+
+-- Record migration
+INSERT INTO schema_migrations (migration_name)
+VALUES ('008_add_vector_embeddings.sql');
+```
+
+---
+
 ## Content Generation Flow
 
 ### Blog Post Structure

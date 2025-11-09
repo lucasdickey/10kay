@@ -18,16 +18,18 @@
 
 ## Overview
 
-The 10KAY database has **7 tables** organized around a filing analysis pipeline:
+The 10KAY database has **7 core tables** (+ 2 planned for Phase 2.5) organized around a filing analysis pipeline:
 
 ```
 companies (47 tech companies)
     ↓
 filings (SEC 10-K/10-Q documents)
     ↓
-content (AI-generated analysis)
-    ↓
-email_deliveries (sent to subscribers)
+    ├── document_embeddings (vector search - Phase 2.5)
+    └── content (AI-generated analysis)
+            ↓
+            ├── analysis_embeddings (vector search - Phase 2.5)
+            └── email_deliveries (sent to subscribers)
 ```
 
 **Critical Schema Mismatch:**
@@ -240,6 +242,81 @@ Migration tracking
 
 ---
 
+### 8. document_embeddings (Planned - Phase 2.5)
+Vector embeddings for raw SEC filing content (chunked)
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
+| `filing_id` | UUID | NULL | - | FK to filings.id |
+| `company_id` | UUID | NULL | - | FK to companies.id |
+| `chunk_index` | INTEGER | NOT NULL | - | Position in document (0, 1, 2...) |
+| `content_text` | TEXT | NOT NULL | - | Original text chunk |
+| `token_count` | INTEGER | NULL | - | Tokens in this chunk |
+| `embedding` | VECTOR(1024) | NULL | - | Embedding vector (pgvector) |
+| `section_type` | VARCHAR | NULL | - | 'business_overview', 'risk_factors', etc. |
+| `page_number` | INTEGER | NULL | - | Approximate page in original PDF |
+| `embedding_model` | VARCHAR | NULL | 'amazon.titan-embed-text-v2:0' | Embedding model used |
+| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
+
+**Foreign Keys:**
+- `filing_id` → `filings.id`
+- `company_id` → `companies.id`
+
+**Indexes:**
+- PRIMARY KEY on `id`
+- INDEX on `filing_id`
+- INDEX on `company_id`
+- IVFFLAT INDEX on `embedding` using cosine distance
+
+**Use Cases:**
+- Semantic search across raw filing content
+- RAG (Retrieval Augmented Generation) for chatbot
+- Find similar filing sections across companies
+
+---
+
+### 9. analysis_embeddings (Planned - Phase 2.5)
+Vector embeddings for AI-generated analysis sections
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
+| `content_id` | UUID | NULL | - | FK to content.id |
+| `company_id` | UUID | NULL | - | FK to companies.id |
+| `filing_id` | UUID | NULL | - | FK to filings.id |
+| `section_name` | VARCHAR | NOT NULL | - | 'executive_summary', 'opportunities', etc. |
+| `content_text` | TEXT | NOT NULL | - | The actual analysis text |
+| `token_count` | INTEGER | NULL | - | Tokens in this section |
+| `embedding` | VECTOR(1024) | NULL | - | Embedding vector (pgvector) |
+| `filing_type` | VARCHAR | NULL | - | '10-K' or '10-Q' |
+| `fiscal_year` | INTEGER | NULL | - | Fiscal year for filtering |
+| `fiscal_quarter` | INTEGER | NULL | - | Fiscal quarter for filtering |
+| `ticker` | VARCHAR | NULL | - | Denormalized ticker for easy querying |
+| `embedding_model` | VARCHAR | NULL | 'amazon.titan-embed-text-v2:0' | Embedding model used |
+| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
+
+**Foreign Keys:**
+- `content_id` → `content.id`
+- `company_id` → `companies.id`
+- `filing_id` → `filings.id`
+
+**Indexes:**
+- PRIMARY KEY on `id`
+- INDEX on `content_id`
+- INDEX on `company_id`
+- INDEX on `section_name`
+- INDEX on `ticker`
+- IVFFLAT INDEX on `embedding` using cosine distance
+
+**Use Cases:**
+- Find companies with similar strategic profiles
+- Cross-company theme analysis
+- Compare risk factors, opportunities across companies
+- Semantic search within analyzed content
+
+---
+
 ## JSONB Structures
 
 ### content.key_takeaways
@@ -292,19 +369,21 @@ companies (1)
     ↓
     ├── filings (*) via company_id
     │       ↓
-    │       └── content (1) via filing_id
-    │               ↓
-    │               └── email_deliveries (*) via content_id
+    │       ├── content (1) via filing_id
+    │       │       ↓
+    │       │       ├── email_deliveries (*) via content_id
+    │       │       └── analysis_embeddings (*) via content_id
+    │       │
+    │       ├── processing_logs (*) via filing_id
+    │       └── document_embeddings (*) via filing_id
     │
-    └── content (*) via company_id
+    ├── content (*) via company_id
+    ├── document_embeddings (*) via company_id
+    └── analysis_embeddings (*) via company_id
 
 subscribers (1)
     ↓
     └── email_deliveries (*) via subscriber_id
-
-filings (1)
-    ↓
-    └── processing_logs (*) via filing_id
 ```
 
 ---
@@ -391,6 +470,7 @@ fiscal_period = f'Q{fiscal_quarter}' if fiscal_quarter else 'FY'
 | 005 | make_status_nullable.sql | Allow NULL status | ✅ |
 | 006 | add_html_columns.sql | Add blog_html, email_html | ✅ |
 | 007 | (planned) | Add ai_analysis, status columns | ⏳ |
+| 008 | add_vector_embeddings.sql | Add document_embeddings, analysis_embeddings tables | 📋 Phase 2.5 |
 
 ---
 
