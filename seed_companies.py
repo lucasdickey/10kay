@@ -8,14 +8,25 @@ into the database, skipping any that already exist.
 import os
 import json
 from pathlib import Path
-from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import execute_batch
 
-# Load environment variables
-load_dotenv('.env.local')
-
+# Load DATABASE_URL from environment
 DATABASE_URL = os.getenv('DATABASE_URL')
+
+# If not in environment, try to load from .env.local
+if not DATABASE_URL:
+    env_file = Path(__file__).parent / '.env.local'
+    if env_file.exists():
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    if key.strip() == 'DATABASE_URL':
+                        DATABASE_URL = value.strip().strip('"').strip("'")
+                        break
+
 COMPANIES_FILE = Path(__file__).parent / 'companies.json'
 
 def load_companies():

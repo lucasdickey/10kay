@@ -3,236 +3,283 @@
     {
       "ticker": "AAPL",
       "name": "Apple Inc.",
+      "domain": "apple.com",
       "enabled": true
     },
     {
       "ticker": "MSFT",
       "name": "Microsoft Corporation",
+      "domain": "microsoft.com",
       "enabled": true
     },
     {
       "ticker": "GOOGL",
       "name": "Alphabet Inc. (Class A)",
+      "domain": "google.com",
       "enabled": true
     },
     {
       "ticker": "GOOG",
       "name": "Alphabet Inc. (Class C)",
+      "domain": "google.com",
       "enabled": true
     },
     {
       "ticker": "AMZN",
       "name": "Amazon.com, Inc.",
+      "domain": "amazon.com",
       "enabled": true
     },
     {
       "ticker": "NVDA",
       "name": "Nvidia Corporation",
+      "domain": "nvidia.com",
       "enabled": true
     },
     {
       "ticker": "META",
       "name": "Meta Platforms, Inc.",
+      "domain": "meta.com",
       "enabled": true
     },
     {
       "ticker": "TSLA",
       "name": "Tesla, Inc.",
+      "domain": "tesla.com",
       "enabled": true
     },
     {
       "ticker": "AVGO",
       "name": "Broadcom Inc.",
+      "domain": "broadcom.com",
       "enabled": true
     },
     {
       "ticker": "ORCL",
       "name": "Oracle Corporation",
+      "domain": "oracle.com",
       "enabled": true
     },
     {
       "ticker": "INTC",
       "name": "Intel Corporation",
+      "domain": "intel.com",
       "enabled": true
     },
     {
       "ticker": "TSM",
       "name": "Taiwan Semiconductor Manufacturing Co., Ltd.",
+      "domain": "tsmc.com",
       "enabled": true
     },
     {
       "ticker": "ASML",
       "name": "ASML Holding N.V.",
+      "domain": "asml.com",
       "enabled": true
     },
     {
       "ticker": "ADBE",
       "name": "Adobe Inc.",
+      "domain": "adobe.com",
       "enabled": true
     },
     {
       "ticker": "CRM",
       "name": "Salesforce, Inc.",
+      "domain": "salesforce.com",
       "enabled": true
     },
     {
       "ticker": "NOW",
       "name": "ServiceNow, Inc.",
+      "domain": "servicenow.com",
       "enabled": true
     },
     {
       "ticker": "SNOW",
       "name": "Snowflake Inc.",
+      "domain": "snowflake.com",
       "enabled": true
     },
     {
       "ticker": "SHOP",
       "name": "Shopify Inc.",
+      "domain": "shopify.com",
       "enabled": true
     },
     {
       "ticker": "QCOM",
       "name": "Qualcomm, Inc.",
+      "domain": "qualcomm.com",
       "enabled": true
     },
     {
       "ticker": "TXN",
       "name": "Texas Instruments Inc.",
+      "domain": "ti.com",
       "enabled": true
     },
     {
       "ticker": "MU",
       "name": "Micron Technology, Inc.",
+      "domain": "micron.com",
       "enabled": true
     },
     {
       "ticker": "AMD",
       "name": "Advanced Micro Devices, Inc.",
+      "domain": "amd.com",
       "enabled": true
     },
     {
       "ticker": "ADSK",
       "name": "Autodesk, Inc.",
+      "domain": "autodesk.com",
       "enabled": true
     },
     {
       "ticker": "PANW",
       "name": "Palo Alto Networks, Inc.",
+      "domain": "paloaltonetworks.com",
       "enabled": true
     },
     {
       "ticker": "CRWD",
       "name": "CrowdStrike Holdings, Inc.",
+      "domain": "crowdstrike.com",
       "enabled": true
     },
     {
       "ticker": "ZM",
       "name": "Zoom Video Communications, Inc.",
+      "domain": "zoom.us",
       "enabled": true
     },
     {
       "ticker": "INTU",
       "name": "Intuit Inc.",
+      "domain": "intuit.com",
       "enabled": true
     },
     {
       "ticker": "TEAM",
       "name": "Atlassian Corporation Plc",
+      "domain": "atlassian.com",
       "enabled": true
     },
     {
       "ticker": "MRVL",
       "name": "Marvell Technology, Inc.",
+      "domain": "marvell.com",
       "enabled": true
     },
     {
       "ticker": "CDNS",
       "name": "Cadence Design Systems, Inc.",
+      "domain": "cadence.com",
       "enabled": true
     },
     {
       "ticker": "KLAC",
       "name": "KLA Corporation",
+      "domain": "kla.com",
       "enabled": true
     },
     {
       "ticker": "LRCX",
       "name": "Lam Research Corporation",
+      "domain": "lamresearch.com",
       "enabled": true
     },
     {
       "ticker": "ADI",
       "name": "Analog Devices, Inc.",
+      "domain": "analog.com",
       "enabled": true
     },
     {
       "ticker": "PYPL",
       "name": "PayPal Holdings, Inc.",
+      "domain": "paypal.com",
       "enabled": true
     },
     {
       "ticker": "SQ",
       "name": "Block, Inc.",
+      "domain": "block.xyz",
       "enabled": true
     },
     {
       "ticker": "SPOT",
       "name": "Spotify Technology S.A.",
+      "domain": "spotify.com",
       "enabled": true
     },
     {
       "ticker": "UBER",
       "name": "Uber Technologies, Inc.",
+      "domain": "uber.com",
       "enabled": true
     },
     {
       "ticker": "DASH",
       "name": "DoorDash, Inc.",
+      "domain": "doordash.com",
       "enabled": true
     },
     {
       "ticker": "WDAY",
       "name": "Workday, Inc.",
+      "domain": "workday.com",
       "enabled": true
     },
     {
       "ticker": "ZS",
       "name": "Zscaler, Inc.",
+      "domain": "zscaler.com",
       "enabled": true
     },
     {
       "ticker": "MDB",
       "name": "MongoDB, Inc.",
+      "domain": "mongodb.com",
       "enabled": true
     },
     {
       "ticker": "SPLK",
       "name": "Splunk Inc.",
+      "domain": "splunk.com",
       "enabled": true
     },
     {
       "ticker": "OKTA",
       "name": "Okta, Inc.",
+      "domain": "okta.com",
       "enabled": true
     },
     {
       "ticker": "ZI",
       "name": "ZoomInfo Technologies Inc.",
+      "domain": "zoominfo.com",
       "enabled": true
     },
     {
       "ticker": "PINS",
       "name": "Pinterest, Inc.",
+      "domain": "pinterest.com",
       "enabled": true
     },
     {
       "ticker": "U",
       "name": "Unity Software Inc.",
+      "domain": "unity.com",
       "enabled": true
     },
     {
       "ticker": "FIG",
       "name": "Figma, Inc.",
+      "domain": "figma.com",
       "enabled": true
     }
   ]
