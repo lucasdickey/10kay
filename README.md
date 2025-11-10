@@ -242,6 +242,14 @@ See `pipeline/README.md` for detailed documentation.
 - Error monitoring and alerting
 - Historical data backfill
 
+### Phase 2.5: Vector Embeddings (Planned)
+- Install pgvector extension on RDS PostgreSQL
+- Create document_embeddings and analysis_embeddings tables
+- Implement Amazon Titan Embeddings v2 integration via Bedrock
+- Add embedding generation phase to pipeline
+- Build semantic search API endpoints
+- Enable cross-company comparisons and RAG chatbot functionality
+
 ### Phase 3: User Accounts & Email (Pending)
 - Clerk authentication integration
 - Subscriber management UI
@@ -259,6 +267,14 @@ See `pipeline/README.md` for detailed documentation.
 - Audio episode generation
 - RSS podcast feed
 - Podcast distribution
+
+### Phase 6.5: RAG Chatbot (Future)
+- Implement RAG (Retrieval Augmented Generation) pipeline
+- Build chatbot UI component for real-time Q&A over all filings
+- Add conversation history tracking
+- Implement citation and source attribution
+- Fine-tune retrieval strategies for optimal results
+- Enable advanced cross-company analysis queries
 
 ---
 
