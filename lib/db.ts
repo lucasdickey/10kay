@@ -20,6 +20,10 @@ export function getPool(): Pool {
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
+      // AWS RDS requires SSL encryption
+      ssl: {
+        rejectUnauthorized: false, // For development; use proper certs in production
+      },
     });
 
     pool.on('error', (err) => {
