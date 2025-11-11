@@ -6,9 +6,14 @@
 
 import Link from 'next/link';
 import { query, Analysis } from '@/lib/db';
+import { CompanyLogo } from '@/lib/company-logo';
 
-async function getLatestAnalyses(): Promise<Analysis[]> {
-  return await query<Analysis>(
+interface AnalysisWithDomain extends Analysis {
+  company_domain?: string | null;
+}
+
+async function getLatestAnalyses(): Promise<AnalysisWithDomain[]> {
+  return await query<AnalysisWithDomain>(
     `
     SELECT
       c.id,
@@ -21,6 +26,7 @@ async function getLatestAnalyses(): Promise<Analysis[]> {
       c.meta_description,
       co.ticker as company_ticker,
       co.name as company_name,
+      co.metadata->>'domain' as company_domain,
       f.filing_type,
       f.filing_date,
       f.fiscal_year,
@@ -135,16 +141,26 @@ export default async function Home() {
                     className="block bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow"
                   >
                     {/* Company Header */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">
-                          {analysis.company_ticker}
-                        </h3>
-                        <p className="text-sm text-gray-600">{analysis.company_name}</p>
+                    <div className="flex items-start gap-4 mb-4">
+                      <CompanyLogo
+                        ticker={analysis.company_ticker}
+                        domain={analysis.company_domain}
+                        size={56}
+                        className="flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-bold text-gray-900 truncate">
+                              {analysis.company_ticker}
+                            </h3>
+                            <p className="text-sm text-gray-600 truncate">{analysis.company_name}</p>
+                          </div>
+                          <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${sentiment.className}`}>
+                            {sentiment.label}
+                          </span>
+                        </div>
                       </div>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${sentiment.className}`}>
-                        {sentiment.label}
-                      </span>
                     </div>
 
                     {/* Filing Info */}

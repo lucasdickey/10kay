@@ -5,7 +5,9 @@
  */
 
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { queryOne, Analysis } from '@/lib/db';
+import { CompanyLogo } from '@/lib/company-logo';
 
 interface AnalysisPageProps {
   params: {
@@ -13,8 +15,12 @@ interface AnalysisPageProps {
   };
 }
 
-async function getAnalysis(id: string): Promise<Analysis | null> {
-  return await queryOne<Analysis>(
+interface AnalysisWithDomain extends Analysis {
+  company_domain?: string | null;
+}
+
+async function getAnalysis(id: string): Promise<AnalysisWithDomain | null> {
+  return await queryOne<AnalysisWithDomain>(
     `
     SELECT
       c.id,
@@ -34,6 +40,7 @@ async function getAnalysis(id: string): Promise<Analysis | null> {
       c.meta_keywords,
       co.ticker as company_ticker,
       co.name as company_name,
+      co.metadata->>'domain' as company_domain,
       f.filing_type,
       f.filing_date,
       f.fiscal_year,
@@ -94,12 +101,40 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
     notFound();
   }
 
-  // Render the pre-generated HTML directly
-  // The BlogGenerator already created a complete HTML document with styles
+  // Render with company header and pre-generated HTML
   return (
-    <div
-      className="analysis-content"
-      dangerouslySetInnerHTML={{ __html: analysis.blog_html }}
-    />
+    <div className="min-h-screen bg-white">
+      {/* Company Header with Logo */}
+      <div className="border-b bg-white sticky top-0 z-10 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center gap-4">
+            <Link href="/" className="text-blue-600 hover:text-blue-700">
+              ← Back
+            </Link>
+            <div className="flex items-center gap-3 flex-1">
+              <CompanyLogo
+                ticker={analysis.company_ticker}
+                domain={analysis.company_domain}
+                size={48}
+              />
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">
+                  {analysis.company_name}
+                </h1>
+                <p className="text-sm text-gray-600">
+                  {analysis.filing_type} • {analysis.company_ticker}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Blog Content */}
+      <div
+        className="analysis-content"
+        dangerouslySetInnerHTML={{ __html: analysis.blog_html }}
+      />
+    </div>
   );
 }
