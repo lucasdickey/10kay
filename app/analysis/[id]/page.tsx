@@ -10,9 +10,9 @@ import { queryOne, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
 
 interface AnalysisPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 interface AnalysisWithDomain extends Analysis {
@@ -56,7 +56,8 @@ async function getAnalysis(id: string): Promise<AnalysisWithDomain | null> {
 }
 
 export async function generateMetadata({ params }: AnalysisPageProps) {
-  const analysis = await getAnalysis(params.id);
+  const { id } = await params;
+  const analysis = await getAnalysis(id);
 
   if (!analysis) {
     return {
@@ -95,7 +96,8 @@ export async function generateMetadata({ params }: AnalysisPageProps) {
 }
 
 export default async function AnalysisPage({ params }: AnalysisPageProps) {
-  const analysis = await getAnalysis(params.id);
+  const { id } = await params;
+  const analysis = await getAnalysis(id);
 
   if (!analysis || !analysis.blog_html) {
     notFound();
