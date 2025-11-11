@@ -199,6 +199,10 @@ class BlogGenerator(BaseGenerator):
 </head>
 <body>
     <article class="blog-post">
+        <nav class="breadcrumb">
+            <a href="/" class="breadcrumb-link">← Home</a>
+        </nav>
+
         <header class="post-header">
             <div class="meta-info">
                 <span class="ticker">{content['ticker']}</span>
@@ -287,9 +291,39 @@ class BlogGenerator(BaseGenerator):
             padding: 2rem 1rem;
         }
 
+        @media (min-width: 1024px) {
+            body {
+                padding: 3rem 4rem;
+            }
+        }
+
+        @media (min-width: 1920px) {
+            body {
+                padding: 3rem 6rem;
+            }
+        }
+
         .blog-post {
-            max-width: 720px;
+            max-width: 1400px;
             margin: 0 auto;
+        }
+
+        .breadcrumb {
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .breadcrumb-link {
+            color: #6b7280;
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .breadcrumb-link:hover {
+            color: #111827;
         }
 
         .post-header {
@@ -414,12 +448,31 @@ class BlogGenerator(BaseGenerator):
             letter-spacing: 0.05em;
             color: #666;
             margin-bottom: 0.5rem;
+            font-weight: 800;
         }
 
         .metric-value {
-            font-size: 1.5rem;
-            font-weight: 700;
+            font-size: 1.25rem;
+            font-weight: 500;
             color: #000;
+        }
+
+        .metric-indicator {
+            display: inline-block;
+            margin-right: 0.5rem;
+            font-size: 1.125rem;
+        }
+
+        .metric-positive {
+            color: #059669;
+        }
+
+        .metric-negative {
+            color: #dc2626;
+        }
+
+        .metric-neutral {
+            color: #6b7280;
         }
 
         .toc {
@@ -549,6 +602,42 @@ class BlogGenerator(BaseGenerator):
         }
         """
 
+    def _analyze_metric_sentiment(self, value_str: str) -> tuple:
+        """
+        Analyze a metric value and return (indicator, css_class)
+        Returns ('', 'neutral') if no clear direction or if change is too small
+        """
+        import re
+
+        value_lower = value_str.lower()
+
+        # Extract percentage change if present
+        pct_match = re.search(r'([+-]?\d+(?:\.\d+)?)\s*%', value_str)
+        if pct_match:
+            pct_value = float(pct_match.group(1))
+            # Only highlight if >= 5% change
+            if pct_value >= 5:
+                return ('↑', 'metric-positive')
+            elif pct_value <= -5:
+                return ('↓', 'metric-negative')
+            else:
+                return ('', 'metric-neutral')
+
+        # Check for positive keywords
+        positive_keywords = ['positive', 'improved', 'growth', 'increased', 'up ', 'gain', 'expansion', 'accelerat']
+        negative_keywords = ['negative', 'declined', 'decreased', 'down ', 'loss', 'contraction', 'slowdown', 'deteriorat']
+
+        for keyword in positive_keywords:
+            if keyword in value_lower:
+                return ('↑', 'metric-positive')
+
+        for keyword in negative_keywords:
+            if keyword in value_lower:
+                return ('↓', 'metric-negative')
+
+        # Default: no indicator
+        return ('', 'metric-neutral')
+
     def _render_metrics(self, metrics: Dict[str, Any]) -> str:
         """Render key metrics grid"""
         if not metrics:
@@ -565,10 +654,15 @@ class BlogGenerator(BaseGenerator):
                 value_html = '<ul style="margin: 0; padding-left: 1.2rem; font-size: 0.875rem;">'
                 for sub_label, sub_value in value.items():
                     sub_label_formatted = sub_label.replace('_', ' ').title()
-                    value_html += f'<li>{sub_label_formatted}: {sub_value}</li>'
+                    indicator, css_class = self._analyze_metric_sentiment(str(sub_value))
+                    indicator_html = f'<span class="metric-indicator {css_class}">{indicator}</span>' if indicator else ''
+                    value_html += f'<li>{sub_label_formatted}: {indicator_html}{sub_value}</li>'
                 value_html += '</ul>'
             else:
-                value_html = str(value)
+                value_str = str(value)
+                indicator, css_class = self._analyze_metric_sentiment(value_str)
+                indicator_html = f'<span class="metric-indicator {css_class}">{indicator}</span>' if indicator else ''
+                value_html = f'{indicator_html}{value_str}'
 
             cards.append(f"""
                 <div class="metric-card">
