@@ -138,10 +138,10 @@ export default async function Home() {
                   <Link
                     key={analysis.id}
                     href={`/analysis/${analysis.id}`}
-                    className="block bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow"
+                    className="block bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
                   >
                     {/* Company Header */}
-                    <div className="flex items-start gap-4 mb-4">
+                    <div className="flex items-start gap-4 p-4 bg-gray-50 border-b">
                       <CompanyLogo
                         ticker={analysis.company_ticker}
                         domain={analysis.company_domain}
@@ -152,9 +152,9 @@ export default async function Home() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <h3 className="text-lg font-bold text-gray-900 truncate">
-                              {analysis.company_ticker}
+                              {analysis.company_name}
                             </h3>
-                            <p className="text-sm text-gray-600 truncate">{analysis.company_name}</p>
+                            <p className="text-sm text-gray-600 truncate">{analysis.company_ticker}</p>
                           </div>
                           <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${sentiment.className}`}>
                             {sentiment.label}
@@ -163,30 +163,26 @@ export default async function Home() {
                       </div>
                     </div>
 
-                    {/* Filing Info */}
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-                      <span className="font-medium">{analysis.filing_type}</span>
-                      <span>•</span>
-                      <span>{getFiscalPeriod(analysis.fiscal_year, analysis.fiscal_quarter)}</span>
-                      <span>•</span>
-                      <span>{formatDate(analysis.filing_date)}</span>
-                    </div>
+                    {/* Content Section */}
+                    <div className="p-6">
+                      {/* Filing Info */}
+                      <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+                        <span className="font-medium">{analysis.filing_type}</span>
+                        <span>•</span>
+                        <span>{getFiscalPeriod(analysis.fiscal_year, analysis.fiscal_quarter)}</span>
+                        <span>•</span>
+                        <span>{formatDate(analysis.filing_date)}</span>
+                      </div>
 
-                    {/* Headline */}
-                    {headline && (
-                      <h4 className="font-semibold text-gray-900 mb-2 line-clamp-2">
-                        {headline}
-                      </h4>
-                    )}
+                      {/* Headline */}
+                      {headline && (
+                        <h4 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                          {headline}
+                        </h4>
+                      )}
 
-                    {/* Summary */}
-                    <p className="text-sm text-gray-600 line-clamp-3">{summary}</p>
-
-                    {/* Read More */}
-                    <div className="mt-4">
-                      <span className="text-blue-600 text-sm font-medium hover:text-blue-700">
-                        Read Full Analysis →
-                      </span>
+                      {/* Summary */}
+                      <p className="text-sm text-gray-600 line-clamp-3">{summary}</p>
                     </div>
                   </Link>
                 );

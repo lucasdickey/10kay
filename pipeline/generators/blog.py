@@ -5,6 +5,7 @@ Transforms analyzed content into styled HTML blog posts.
 """
 from typing import Dict, Any, Optional, List
 import json
+import re
 from datetime import datetime
 
 from .base import (
@@ -182,9 +183,17 @@ class BlogGenerator(BaseGenerator):
         sections = content.get('deep_sections', [])
 
         # Sentiment indicator
-        sentiment = content.get('sentiment_score', 0)
+        sentiment = content.get('sentiment_score') or 0
         sentiment_class = 'positive' if sentiment > 0.2 else 'negative' if sentiment < -0.2 else 'neutral'
         sentiment_text = 'Positive' if sentiment > 0.2 else 'Negative' if sentiment < -0.2 else 'Neutral'
+
+        # Calculate reading time based on all content
+        total_words = (
+            len(content.get('deep_intro', '').split()) +
+            len(content.get('deep_conclusion', '').split()) +
+            sum(len(section.get('content', '').split()) for section in sections if isinstance(section, dict))
+        )
+        reading_time = max(1, total_words // 200)  # 200 words per minute, minimum 1 min
 
         html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -217,11 +226,11 @@ class BlogGenerator(BaseGenerator):
             <h1 class="headline">{content['deep_headline']}</h1>
 
             <div class="post-meta">
-                <time datetime="{content['published_at'].isoformat() if content['published_at'] else ''}" class="publish-date">
-                    {content['published_at'].strftime('%B %d, %Y') if content['published_at'] else 'Draft'}
+                <time datetime="{content['filing_date'].isoformat() if content.get('filing_date') else ''}" class="publish-date">
+                    {content['filing_date'].strftime('%B %d, %Y') if content.get('filing_date') else ''}
                 </time>
                 <span class="separator">•</span>
-                <span class="reading-time">{len(content['deep_intro'].split()) // 200 + len(content['deep_conclusion'].split()) // 200} min read</span>
+                <span class="reading-time">{reading_time} min read</span>
             </div>
         </header>
 
@@ -430,37 +439,55 @@ class BlogGenerator(BaseGenerator):
 
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
             margin: 2rem 0;
         }
 
         .metric-card {
             background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: box-shadow 0.2s ease;
+        }
+
+        .metric-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
 
         .metric-label {
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: #666;
-            margin-bottom: 0.5rem;
-            font-weight: 800;
+            color: #6b7280;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
         }
 
         .metric-value {
-            font-size: 1.25rem;
-            font-weight: 500;
-            color: #000;
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: #111827;
+            line-height: 1.2;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-change {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            margin-top: 0.5rem;
         }
 
         .metric-indicator {
-            display: inline-block;
-            margin-right: 0.5rem;
-            font-size: 1.125rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .metric-change-value {
+            font-size: 0.875rem;
+            font-weight: 600;
         }
 
         .metric-positive {
@@ -473,6 +500,40 @@ class BlogGenerator(BaseGenerator):
 
         .metric-neutral {
             color: #6b7280;
+        }
+
+        .metric-description {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-top: 0.5rem;
+            line-height: 1.5;
+        }
+
+        .metric-nested {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .metric-nested-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            font-size: 0.875rem;
+        }
+
+        .metric-nested-label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .metric-nested-value {
+            font-weight: 600;
+            color: #111827;
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
         }
 
         .toc {
@@ -639,7 +700,7 @@ class BlogGenerator(BaseGenerator):
         return ('', 'metric-neutral')
 
     def _render_metrics(self, metrics: Dict[str, Any]) -> str:
-        """Render key metrics grid"""
+        """Render key metrics grid with modern card layout"""
         if not metrics:
             return ''
 
@@ -650,26 +711,79 @@ class BlogGenerator(BaseGenerator):
 
             # Handle nested dicts (like growth_indicators)
             if isinstance(value, dict):
-                # Format nested dict as bullet list
-                value_html = '<ul style="margin: 0; padding-left: 1.2rem; font-size: 0.875rem;">'
-                for sub_label, sub_value in value.items():
-                    sub_label_formatted = sub_label.replace('_', ' ').title()
-                    indicator, css_class = self._analyze_metric_sentiment(str(sub_value))
-                    indicator_html = f'<span class="metric-indicator {css_class}">{indicator}</span>' if indicator else ''
-                    value_html += f'<li>{sub_label_formatted}: {indicator_html}{sub_value}</li>'
-                value_html += '</ul>'
+                # Get first item as main metric, rest as nested
+                items = list(value.items())
+                if items:
+                    main_label, main_value = items[0]
+                    main_label_formatted = main_label.replace('_', ' ').title()
+                    indicator, css_class = self._analyze_metric_sentiment(str(main_value))
+
+                    # Extract percentage for change display
+                    pct_match = re.search(r'([+-]?\d+(?:\.\d+)?)\s*%', str(main_value))
+                    change_html = ''
+                    if indicator and pct_match:
+                        pct_value = pct_match.group(1)
+                        change_html = f'''
+                        <div class="metric-change">
+                            <span class="metric-indicator {css_class}">{indicator}</span>
+                            <span class="metric-change-value {css_class}">{pct_value}%</span>
+                        </div>
+                        '''
+
+                    # Build nested items
+                    nested_html = ''
+                    if len(items) > 1:
+                        nested_html = '<div class="metric-nested">'
+                        for sub_label, sub_value in items[1:]:
+                            sub_label_formatted = sub_label.replace('_', ' ').title()
+                            sub_indicator, sub_css_class = self._analyze_metric_sentiment(str(sub_value))
+                            sub_indicator_html = f'<span class="metric-indicator {sub_css_class}">{sub_indicator}</span>' if sub_indicator else ''
+                            nested_html += f'''
+                            <div class="metric-nested-item">
+                                <span class="metric-nested-label">{sub_label_formatted}</span>
+                                <span class="metric-nested-value">{sub_indicator_html}{sub_value}</span>
+                            </div>
+                            '''
+                        nested_html += '</div>'
+
+                    # Remove percentage from main value display if it's in change
+                    main_value_display = str(main_value)
+                    if pct_match:
+                        main_value_display = re.sub(r'\s*[+-]?\d+(?:\.\d+)?%', '', main_value_display).strip()
+
+                    cards.append(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">{label_formatted}</div>
+                            <div class="metric-value">{main_value_display}</div>
+                            {change_html}
+                            {nested_html}
+                        </div>
+                    """)
             else:
                 value_str = str(value)
                 indicator, css_class = self._analyze_metric_sentiment(value_str)
-                indicator_html = f'<span class="metric-indicator {css_class}">{indicator}</span>' if indicator else ''
-                value_html = f'{indicator_html}{value_str}'
 
-            cards.append(f"""
-                <div class="metric-card">
-                    <div class="metric-label">{label_formatted}</div>
-                    <div class="metric-value">{value_html}</div>
-                </div>
-            """)
+                # Extract percentage for change display
+                pct_match = re.search(r'([+-]?\d+(?:\.\d+)?)\s*%', value_str)
+                change_html = ''
+                if indicator and pct_match:
+                    pct_value = pct_match.group(1)
+                    change_html = f'''
+                    <div class="metric-change">
+                        <span class="metric-indicator {css_class}">{indicator}</span>
+                        <span class="metric-change-value {css_class}">{pct_value}%</span>
+                    </div>
+                    '''
+                    # Remove percentage from main value display
+                    value_str = re.sub(r'\s*[+-]?\d+(?:\.\d+)?%', '', value_str).strip()
+
+                cards.append(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">{label_formatted}</div>
+                        <div class="metric-value">{value_str}</div>
+                        {change_html}
+                    </div>
+                """)
 
         return f"""
         <div class="metrics-grid">

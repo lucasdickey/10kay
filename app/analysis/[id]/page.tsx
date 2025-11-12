@@ -109,24 +109,19 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
       {/* Company Header with Logo */}
       <div className="border-b bg-white sticky top-0 z-10 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-blue-600 hover:text-blue-700">
-              ← Back
-            </Link>
-            <div className="flex items-center gap-3 flex-1">
-              <CompanyLogo
-                ticker={analysis.company_ticker}
-                domain={analysis.company_domain}
-                size={48}
-              />
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  {analysis.company_name}
-                </h1>
-                <p className="text-sm text-gray-600">
-                  {analysis.filing_type} • {analysis.company_ticker}
-                </p>
-              </div>
+          <div className="flex items-center gap-3">
+            <CompanyLogo
+              ticker={analysis.company_ticker}
+              domain={analysis.company_domain}
+              size={48}
+            />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">
+                {analysis.company_name}
+              </h1>
+              <p className="text-sm text-gray-600">
+                {analysis.filing_type} • {analysis.company_ticker}
+              </p>
             </div>
           </div>
         </div>
