@@ -467,7 +467,7 @@ class BlogGenerator(BaseGenerator):
         }
 
         .metric-label {
-            font-size: 0.75rem;
+            font-size: 1rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: #6b7280;
@@ -476,8 +476,8 @@ class BlogGenerator(BaseGenerator):
         }
 
         .metric-value {
-            font-size: 1.875rem;
-            font-weight: 700;
+            font-size: 1.25rem;
+            font-weight: 600;
             color: #111827;
             line-height: 1.2;
             margin-bottom: 0.5rem;
