@@ -53,6 +53,7 @@ async function getCompanyAnalyses(ticker: string): Promise<CompanyWithAnalyses |
       c.published_at,
       c.created_at,
       c.meta_description,
+      c.slug,
       co.ticker as company_ticker,
       co.name as company_name,
       co.metadata->>'domain' as company_domain,
@@ -133,17 +134,9 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
           <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 mb-4 inline-block">
             ← Back to All Analyses
           </Link>
-          <div className="flex items-center gap-4">
-            <CompanyLogo
-              ticker={companyData.ticker}
-              domain={companyData.domain}
-              size={64}
-            />
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{companyData.name}</h1>
-              <p className="text-lg text-gray-600">{companyData.ticker}</p>
-            </div>
-          </div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {companyData.ticker} - {companyData.name}
+          </h1>
         </div>
       </header>
 
@@ -169,7 +162,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
               return (
                 <Link
                   key={analysis.id}
-                  href={`/analysis/${analysis.id}`}
+                  href={`/${analysis.slug}`}
                   className="block bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
                 >
                   {/* Filing Header */}

@@ -1,7 +1,8 @@
 /**
- * Individual Analysis Page
+ * Analysis Page (Slug-based Route)
  *
- * Displays a single SEC filing analysis with the generated blog HTML
+ * Displays a single SEC filing analysis via friendly URL:
+ * /ticker/year/quarter/type (e.g., /dash/2025/q3/10q)
  */
 
 import { notFound } from 'next/navigation';
@@ -11,7 +12,10 @@ import { CompanyLogo } from '@/lib/company-logo';
 
 interface AnalysisPageProps {
   params: Promise<{
-    id: string;
+    ticker: string;
+    year: string;
+    quarter: string;
+    type: string;
   }>;
 }
 
@@ -19,7 +23,14 @@ interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
 }
 
-async function getAnalysis(id: string): Promise<AnalysisWithDomain | null> {
+async function getAnalysisBySlug(
+  ticker: string,
+  year: string,
+  quarter: string,
+  type: string
+): Promise<AnalysisWithDomain | null> {
+  const slug = `${ticker}/${year}/${quarter}/${type}`;
+
   return await queryOne<AnalysisWithDomain>(
     `
     SELECT
@@ -49,15 +60,15 @@ async function getAnalysis(id: string): Promise<AnalysisWithDomain | null> {
     FROM content c
     JOIN filings f ON c.filing_id = f.id
     JOIN companies co ON c.company_id = co.id
-    WHERE c.id = $1 AND c.blog_html IS NOT NULL
+    WHERE c.slug = $1 AND c.blog_html IS NOT NULL
   `,
-    [id]
+    [slug]
   );
 }
 
 export async function generateMetadata({ params }: AnalysisPageProps) {
-  const { id } = await params;
-  const analysis = await getAnalysis(id);
+  const { ticker, year, quarter, type } = await params;
+  const analysis = await getAnalysisBySlug(ticker, year, quarter, type);
 
   if (!analysis) {
     return {
@@ -96,8 +107,8 @@ export async function generateMetadata({ params }: AnalysisPageProps) {
 }
 
 export default async function AnalysisPage({ params }: AnalysisPageProps) {
-  const { id } = await params;
-  const analysis = await getAnalysis(id);
+  const { ticker, year, quarter, type } = await params;
+  const analysis = await getAnalysisBySlug(ticker, year, quarter, type);
 
   if (!analysis || !analysis.blog_html) {
     notFound();

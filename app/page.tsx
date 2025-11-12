@@ -24,6 +24,7 @@ async function getLatestAnalyses(): Promise<AnalysisWithDomain[]> {
       c.published_at,
       c.created_at,
       c.meta_description,
+      c.slug,
       co.ticker as company_ticker,
       co.name as company_name,
       co.metadata->>'domain' as company_domain,
@@ -137,7 +138,7 @@ export default async function Home() {
                 return (
                   <Link
                     key={analysis.id}
-                    href={`/analysis/${analysis.id}`}
+                    href={`/${analysis.slug}`}
                     className="block bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
                   >
                     {/* Company Header */}
