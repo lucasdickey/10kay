@@ -308,11 +308,11 @@ Generate a deep analysis in JSON format:
   "sections": [
     {{
       "title": "Financial Performance Deep Dive",
-      "content": "6-8 paragraphs (400-600 words). Break down revenue by segment with YoY/QoQ trends. Analyze margin expansion/compression with drivers. Discuss cash flow and capital allocation. Compare to peers. Identify inflection points or concerning trends. Include specific numbers, percentages, and basis point changes throughout."
+      "content": "6-8 paragraphs (400-600 words). Break down revenue by segment with YoY/QoQ trends. Analyze margin expansion/compression with drivers. Discuss cash flow and capital allocation. Compare to peers. Identify inflection points or concerning trends. Include specific numbers, percentages, and basis point changes throughout. When a percentage of a KPI is large, present the gross value as well for context."
     }},
     {{
       "title": "Strategic Shifts and Product Evolution",
-      "content": "6-8 paragraphs (400-600 words). Analyze new product launches, R&D investments, strategic pivots. Discuss go-to-market changes. Examine partnerships and M&A. Connect product strategy to financials. Assess competitive positioning. Include forward-looking indicators from management commentary."
+      "content": "6-8 paragraphs (400-600 words). Analyze new product launches (e.g., Shop Pay, Plus), R&D investments, strategic pivots. When mentioning a product, include a brief, one-sentence description of what it is. Discuss go-to-market changes. Examine partnerships and M&A. Connect product strategy to financials. Assess competitive positioning. Include forward-looking indicators from management commentary."
     }},
     {{
       "title": "Market Dynamics and Competitive Position",
@@ -327,7 +327,7 @@ Generate a deep analysis in JSON format:
       "content": "5-7 paragraphs (350-500 words). Identify untapped markets and expansion opportunities. Analyze operational leverage potential. Discuss innovation pipeline. Assess M&A potential. Include TAM analysis where relevant."
     }}
   ],
-  "conclusion": "5-6 paragraphs (300-400 words) synthesizing insights and forward-looking implications. Recap the 2-3 most important themes. Assess whether the business is accelerating or decelerating. Identify key metrics to watch in next quarter. Provide actionable takeaways for operators. End with contrarian or non-obvious insight.",
+  "conclusion": "5-6 paragraphs (300-400 words) synthesizing insights and forward-looking implications. Recap the 2-3 most important themes. Assess whether the business is accelerating or decelerating. Identify key metrics to watch in next quarter. Provide actionable takeaways for operators. End with contrarian or non-obvious insight. Avoid business jargon like 'facing headwinds' and instead provide specific, clarifying details (e.g., consumer spending changes due to employment numbers).",
   "key_metrics": {{
     "revenue": "$XXX.XB (±X.X% YoY, ±X.X% QoQ) with segment breakdown and trend analysis",
     "gross_margin": "XX.X% (±XXbps YoY) with drivers explanation",
@@ -367,8 +367,8 @@ Generate a deep analysis in JSON format:
 - Audience: Sophisticated tech operators, founders, investors who want deep understanding
 - Length: Each section should be 350-600 words for a total 5-7 minute read (2000-3000 words)
 - Focus: Strategic narrative woven with numbers, not just data dumps
-- Include: Specific figures, YoY/QoQ comparisons, segment breakdowns, direct quotes, concrete examples
-- Avoid: Hedging language, surface-level observations, obvious points, filler content
+- Include: Specific figures, YoY/QoQ comparisons, segment breakdowns, direct quotes, concrete examples. 'Arr' should always be 'ARR' when used as an acronym for annual recurring revenue. When a percentage of a KPI is large, present the gross value as well for context.
+- Avoid: Hedging language, surface-level observations, obvious points, filler content.
 
 **Critical**: This is PAID tier content. Make it substantially deeper and more insightful than a free summary.
 
