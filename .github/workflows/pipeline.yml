@@ -1,0 +1,61 @@
+name: SEC Filing Analysis Pipeline
+
+on:
+  # Run 4 times daily at 6-hour intervals
+  schedule:
+    - cron: '0 0,6,12,18 * * *'  # 12am, 6am, 12pm, 6pm UTC
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Pipeline phase to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - fetch
+          - analyze
+          - generate
+          - publish
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          PHASE="${{ github.event.inputs.phase || 'all' }}"
+          echo "Running pipeline phase: $PHASE"
+          python3 pipeline/main.py --phase $PHASE
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-logs-${{ github.run_number }}
+          path: |
+            *.log
+            /tmp/*.log
+          retention-days: 7
