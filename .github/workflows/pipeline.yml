@@ -43,8 +43,13 @@ jobs:
       - name: Run pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEDROCK_MODEL_ID: ${{ secrets.AWS_BEDROCK_MODEL_ID }}
+          S3_BUCKET_FILINGS: ${{ secrets.S3_BUCKET_FILINGS }}
+          S3_BUCKET_AUDIO: ${{ secrets.S3_BUCKET_AUDIO }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
         run: |
           PHASE="${{ github.event.inputs.phase || 'all' }}"
           echo "Running pipeline phase: $PHASE"
