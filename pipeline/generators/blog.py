@@ -209,7 +209,10 @@ class BlogGenerator(BaseGenerator):
 <body>
     <article class="blog-post">
         <nav class="breadcrumb">
-            <a href="/" class="breadcrumb-link">← Home</a>
+            <a href="/" class="breadcrumb-link">
+                <img src="/logo.png" alt="10KAY" class="breadcrumb-logo" />
+                ← Home
+            </a>
         </nav>
 
         <header class="post-header">
@@ -329,10 +332,19 @@ class BlogGenerator(BaseGenerator):
             font-size: 0.875rem;
             font-weight: 500;
             transition: color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .breadcrumb-link:hover {
             color: #111827;
+        }
+
+        .breadcrumb-logo {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
         }
 
         .post-header {

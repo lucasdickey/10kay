@@ -92,7 +92,12 @@ export default async function Home() {
       {/* Header */}
       <header className="border-b">
         <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-6">
-          <h1 className="text-4xl font-bold text-gray-900">10KAY</h1>
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="10KAY Logo" className="w-12 h-12" />
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900">10KAY</h1>
+            </div>
+          </div>
           <p className="mt-2 text-lg text-gray-600">
             Strategic Insights from SEC Filings for Tech Companies
           </p>

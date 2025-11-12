@@ -131,7 +131,8 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
       {/* Header */}
       <header className="border-b bg-white sticky top-0 z-10 shadow-sm">
         <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-6">
-          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 mb-4 inline-block">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700 mb-4 inline-flex items-center gap-2">
+            <img src="/logo.png" alt="10KAY" className="w-5 h-5" />
             ← Back to All Analyses
           </Link>
           <h1 className="text-3xl font-bold text-gray-900">
