@@ -226,15 +226,23 @@ Generate a TLDR summary in JSON format with the following structure:
   "key_points": [
     {{
       "title": "Financial Performance Overview",
-      "description": "2-3 sentence explanation with specific numbers and YoY comparisons"
+      "description": "Full paragraph (4-6 sentences) with headline insight and specific YoY/QoQ numbers. Explain margin trends and growth drivers with basis point changes. Include segment-level details. Discuss sustainability of metrics and changes from prior periods. End with implications for future trajectory."
     }},
     {{
-      "title": "Strategic Shift or Key Theme",
-      "description": "2-3 sentence explanation of what changed and implications"
+      "title": "Strategic Initiatives and Operational Changes",
+      "description": "Full paragraph (4-6 sentences) describing operational or strategic shifts. Explain why management made these changes and competitive implications. Include forward-looking indicators from commentary. Connect strategy to financial performance. Discuss execution risks and timeline."
     }},
     {{
-      "title": "Market Position or Competitive Dynamics",
-      "description": "2-3 sentence explanation with context and nuance"
+      "title": "Market Position and Competitive Dynamics",
+      "description": "Full paragraph (4-6 sentences) analyzing market share trends and positioning. Discuss customer concentration and retention metrics. Explain TAM expansion opportunities. Include competitive threats and advantages. Assess how the company is gaining or losing ground."
+    }},
+    {{
+      "title": "Operational Efficiency and Profitability",
+      "description": "Full paragraph (4-6 sentences) explaining operational leverage and cost structure. Discuss efficiency improvements or headwinds. Analyze gross and operating margin trends. Include productivity metrics if available. Assess sustainability of profitability improvements."
+    }},
+    {{
+      "title": "Growth Catalysts and Material Risks",
+      "description": "Full paragraph (4-6 sentences) identifying near and medium-term growth drivers. Discuss macro headwinds or tailwinds. Explain key risks material to investment thesis. Assess management's mitigation strategies. Provide forward-looking perspective on key metrics."
     }}
   ],
   "sentiment_score": 0.5,  // -1 (very negative) to 1 (very positive)
@@ -276,15 +284,23 @@ Generate a deep analysis in JSON format:
     "key_points": [
       {{
         "title": "Financial Performance Overview",
-        "description": "2-3 sentence explanation with specific numbers and YoY comparisons"
+        "description": "Full paragraph (4-6 sentences) with headline insight and specific YoY/QoQ numbers. Explain margin trends and growth drivers with basis point changes. Include segment-level details. Discuss sustainability of metrics and changes from prior periods. End with implications for future trajectory."
       }},
       {{
-        "title": "Strategic Shift or Key Theme",
-        "description": "2-3 sentence explanation of what changed and implications"
+        "title": "Strategic Initiatives and Operational Changes",
+        "description": "Full paragraph (4-6 sentences) describing operational or strategic shifts. Explain why management made these changes and competitive implications. Include forward-looking indicators from commentary. Connect strategy to financial performance. Discuss execution risks and timeline."
       }},
       {{
-        "title": "Market Position or Competitive Dynamics",
-        "description": "2-3 sentence explanation with context and nuance"
+        "title": "Market Position and Competitive Dynamics",
+        "description": "Full paragraph (4-6 sentences) analyzing market share trends and positioning. Discuss customer concentration and retention metrics. Explain TAM expansion opportunities. Include competitive threats and advantages. Assess how the company is gaining or losing ground."
+      }},
+      {{
+        "title": "Operational Efficiency and Profitability",
+        "description": "Full paragraph (4-6 sentences) explaining operational leverage and cost structure. Discuss efficiency improvements or headwinds. Analyze gross and operating margin trends. Include productivity metrics if available. Assess sustainability of profitability improvements."
+      }},
+      {{
+        "title": "Growth Catalysts and Material Risks",
+        "description": "Full paragraph (4-6 sentences) identifying near and medium-term growth drivers. Discuss macro headwinds or tailwinds. Explain key risks material to investment thesis. Assess management's mitigation strategies. Provide forward-looking perspective on key metrics."
       }}
     ]
   }},

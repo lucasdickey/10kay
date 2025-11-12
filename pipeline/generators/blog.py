@@ -214,7 +214,7 @@ class BlogGenerator(BaseGenerator):
 
         <header class="post-header">
             <div class="meta-info">
-                <span class="ticker">{content['ticker']}</span>
+                <a href="/{content['ticker'].lower()}" class="ticker ticker-link">{content['ticker']}</a>
                 <span class="separator">•</span>
                 <span class="filing-type">{content['filing_type']}</span>
                 <span class="separator">•</span>
@@ -351,6 +351,16 @@ class BlogGenerator(BaseGenerator):
         .ticker {
             font-weight: 600;
             color: #0066cc;
+        }
+
+        .ticker-link {
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .ticker-link:hover {
+            color: #0052a3;
+            text-decoration: underline;
         }
 
         .separator {
