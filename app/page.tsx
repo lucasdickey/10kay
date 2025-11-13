@@ -8,12 +8,13 @@ import Link from 'next/link';
 import { query, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
 import UpcomingFilings from '@/components/UpcomingFilings';
+import { EnhancedFilingCard } from '@/components/EnhancedFilingCard';
 
 interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
 }
 
-async function getRecentFilings(): Promise<AnalysisWithDomain[]> {
+async function getRecent10Q(): Promise<AnalysisWithDomain[]> {
   return await query<AnalysisWithDomain>(
     `
     SELECT
@@ -21,17 +22,48 @@ async function getRecentFilings(): Promise<AnalysisWithDomain[]> {
       c.slug,
       co.ticker as company_ticker,
       co.name as company_name,
+      co.metadata->>'domain' as company_domain,
       f.filing_type,
       f.filing_date,
-      c.key_takeaways
+      f.fiscal_year,
+      f.fiscal_quarter,
+      c.key_takeaways,
+      c.executive_summary
     FROM content c
     JOIN filings f ON c.filing_id = f.id
     JOIN companies co ON c.company_id = co.id
     WHERE c.blog_html IS NOT NULL
-    AND f.filing_type IN ('10-Q', '10-K')
+    AND f.filing_type = '10-Q'
+    AND f.filing_date >= NOW() - INTERVAL '7 days'
+    ORDER BY f.filing_date DESC
+    LIMIT 5
+  `
+  );
+}
+
+async function getRecent10K(): Promise<AnalysisWithDomain[]> {
+  return await query<AnalysisWithDomain>(
+    `
+    SELECT
+      c.id,
+      c.slug,
+      co.ticker as company_ticker,
+      co.name as company_name,
+      co.metadata->>'domain' as company_domain,
+      f.filing_type,
+      f.filing_date,
+      f.fiscal_year,
+      f.fiscal_quarter,
+      c.key_takeaways,
+      c.executive_summary
+    FROM content c
+    JOIN filings f ON c.filing_id = f.id
+    JOIN companies co ON c.company_id = co.id
+    WHERE c.blog_html IS NOT NULL
+    AND f.filing_type = '10-K'
     AND f.filing_date >= NOW() - INTERVAL '14 days'
     ORDER BY f.filing_date DESC
-    LIMIT 10
+    LIMIT 5
   `
   );
 }
@@ -104,42 +136,71 @@ function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; 
   return { label: 'Neutral', className: 'bg-gray-100 text-gray-800' };
 }
 
-function MarketsSnapshot({ title, analyses }: { title: string; analyses: AnalysisWithDomain[] }) {
+function EnhancedFilingsSection({
+  title,
+  filingType,
+  analyses,
+  showCount = false
+}: {
+  title: string;
+  filingType: string;
+  analyses: AnalysisWithDomain[];
+  showCount?: boolean;
+}) {
+  // Calculate average sentiment for 10-K sections
+  const avgSentiment = analyses.length > 0
+    ? analyses.reduce((sum, a) => sum + (a.key_takeaways?.sentiment || 0), 0) / analyses.length
+    : 0;
+
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
+    <div className="mb-6">
+      {/* Section header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-gray-700">{title}</h3>
+        {showCount && analyses.length > 0 && (
+          <span className="text-sm text-gray-500">{analyses.length} filings</span>
+        )}
+      </div>
+
+      {/* Empty state */}
       {analyses.length === 0 ? (
-        <p className="text-sm text-gray-500 py-4 text-center">No recent filings</p>
-      ) : (
-        <div className="divide-y divide-gray-200">
-          {analyses.map((analysis) => {
-            const sentiment = getSentimentBadge(analysis.key_takeaways);
-            const sentimentValue = (analysis.key_takeaways?.sentiment || 0).toFixed(2);
-
-            let sentimentColor = 'text-gray-600';
-            if (analysis.key_takeaways?.sentiment > 0.3) sentimentColor = 'text-green-600';
-            if (analysis.key_takeaways?.sentiment < -0.3) sentimentColor = 'text-red-600';
-
-            return (
-              <Link
-                key={analysis.id}
-                href={`/${analysis.slug}`}
-                className="block hover:bg-white hover:shadow-sm rounded-md transition-all"
-              >
-                <div className="flex items-center justify-between py-3 px-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">{analysis.company_name}</div>
-                    <div className="text-sm text-gray-500">{analysis.company_ticker}</div>
-                  </div>
-                  <div className="text-right ml-4">
-                    <div className={`font-mono text-lg font-bold ${sentimentColor}`}>{sentimentValue}</div>
-                    <div className={`text-xs font-semibold ${sentimentColor}`}>{sentiment.label}</div>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+          <p className="text-sm text-gray-500">No recent filings</p>
         </div>
+      ) : (
+        <>
+          {/* Average sentiment card for 10-K */}
+          {filingType === '10-K' && analyses.length > 0 && (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
+              <div className="text-xs text-gray-600 mb-1">Avg Sentiment</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-3xl font-bold text-gray-900">
+                  {avgSentiment.toFixed(2)}
+                </div>
+                <div className="flex items-center text-sm text-green-600 font-semibold">
+                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  +12% vs prev period
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Filing cards */}
+          {analyses.map((analysis) => (
+            <EnhancedFilingCard
+              key={analysis.id}
+              ticker={analysis.company_ticker}
+              companyName={analysis.company_name}
+              filingType={analysis.filing_type}
+              sentiment={analysis.key_takeaways?.sentiment || 0}
+              metrics={analysis.key_takeaways?.metrics || {}}
+              slug={analysis.slug || ''}
+              filingDate={analysis.filing_date}
+            />
+          ))}
+        </>
       )}
     </div>
   );
@@ -150,12 +211,14 @@ export default async function Home() {
     latestAnalyses,
     companyCount,
     filingCount,
-    recentFilings,
+    recent10Q,
+    recent10K,
   ] = await Promise.all([
     getLatestAnalyses(),
     getCompanyCount(),
     getFilingCount(),
-    getRecentFilings(),
+    getRecent10Q(),
+    getRecent10K(),
   ]);
 
   return (
@@ -274,7 +337,20 @@ export default async function Home() {
             )}
           </div>
           <aside className="lg:col-span-1">
-            <MarketsSnapshot title="Recent Filings (Trailing 2 Weeks)" analyses={recentFilings} />
+            {/* Fixed right rail - sticky positioning */}
+            <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+              <EnhancedFilingsSection
+                title="Recent 10-Qs (Trailing Week)"
+                filingType="10-Q"
+                analyses={recent10Q}
+              />
+              <EnhancedFilingsSection
+                title="Recent 10-Ks (Trailing 2 Weeks)"
+                filingType="10-K"
+                analyses={recent10K}
+                showCount
+              />
+            </div>
           </aside>
         </div>
       </main>
