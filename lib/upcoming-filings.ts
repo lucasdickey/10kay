@@ -114,50 +114,77 @@ export function calculateUpcomingFilings(
       continue;
     }
 
-    const periodEnd = new Date(filing.period_end_date);
-    let nextPeriodEnd: Date;
-    let nextFilingType: string;
-    let nextFiscalYear: number;
-    let nextFiscalQuarter: number | undefined;
+    let currentPeriodEnd = new Date(filing.period_end_date);
+    let currentFilingType = filing.filing_type;
+    let currentFiscalYear = filing.fiscal_year;
+    let currentFiscalQuarter = filing.fiscal_quarter;
 
-    // Determine the next filing based on the last filing
-    if (filing.filing_type === '10-Q') {
-      // If last filing was Q4, next is 10-K for the same fiscal year
-      if (filing.fiscal_quarter === 4) {
-        nextFilingType = '10-K';
-        nextPeriodEnd = new Date(periodEnd); // Q4 end = year end
-        nextFiscalYear = filing.fiscal_year;
-        nextFiscalQuarter = undefined;
+    // Keep iterating forward until we find a filing in the future window
+    // Limit iterations to prevent infinite loops (max 20 quarters ~5 years)
+    let iterations = 0;
+    const MAX_ITERATIONS = 20;
+
+    while (iterations < MAX_ITERATIONS) {
+      iterations++;
+
+      let nextPeriodEnd: Date;
+      let nextFilingType: string;
+      let nextFiscalYear: number;
+      let nextFiscalQuarter: number | undefined;
+
+      // Determine the next filing based on the current filing
+      if (currentFilingType === '10-Q') {
+        // If current filing was Q4, next is 10-K for the same fiscal year
+        if (currentFiscalQuarter === 4) {
+          nextFilingType = '10-K';
+          nextPeriodEnd = new Date(currentPeriodEnd); // Q4 end = year end
+          nextFiscalYear = currentFiscalYear;
+          nextFiscalQuarter = undefined;
+        } else {
+          // Next is the following quarter
+          nextFilingType = '10-Q';
+          nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, currentFiscalQuarter || 1);
+          nextFiscalYear = currentFiscalQuarter === 4 ? currentFiscalYear + 1 : currentFiscalYear;
+          nextFiscalQuarter = currentFiscalQuarter ? (currentFiscalQuarter % 4) + 1 : 1;
+        }
       } else {
-        // Next is the following quarter
+        // If current filing was 10-K, next is Q1 of next fiscal year
         nextFilingType = '10-Q';
-        nextPeriodEnd = getNextQuarterEnd(periodEnd, filing.fiscal_quarter || 1);
-        nextFiscalYear = filing.fiscal_quarter === 4 ? filing.fiscal_year + 1 : filing.fiscal_year;
-        nextFiscalQuarter = filing.fiscal_quarter ? (filing.fiscal_quarter % 4) + 1 : 1;
+        nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, 0); // Start from Q1
+        nextFiscalYear = currentFiscalYear + 1;
+        nextFiscalQuarter = 1;
       }
-    } else {
-      // If last filing was 10-K, next is Q1 of next fiscal year
-      nextFilingType = '10-Q';
-      nextPeriodEnd = getNextQuarterEnd(periodEnd, 0); // Start from Q1
-      nextFiscalYear = filing.fiscal_year + 1;
-      nextFiscalQuarter = 1;
-    }
 
-    // Calculate estimated filing date
-    const estimatedDate = estimateFilingDate(nextPeriodEnd, nextFilingType);
-    const daysUntil = getDaysUntil(estimatedDate);
+      // Calculate estimated filing date
+      const estimatedDate = estimateFilingDate(nextPeriodEnd, nextFilingType);
+      const daysUntil = getDaysUntil(estimatedDate);
 
-    // Only include filings within the specified time window
-    // and exclude past filings (daysUntil > 0)
-    if (daysUntil > 0 && daysUntil <= daysAhead) {
-      upcoming.push({
-        ticker: filing.ticker,
-        name: filing.name,
-        filingType: nextFilingType,
-        estimatedDate,
-        daysUntil,
-        fiscalPeriod: formatFiscalPeriod(nextFilingType, nextFiscalYear, nextFiscalQuarter),
-      });
+      // If this filing is in the future window, add it and stop
+      if (daysUntil > 0 && daysUntil <= daysAhead) {
+        upcoming.push({
+          ticker: filing.ticker,
+          name: filing.name,
+          filingType: nextFilingType,
+          estimatedDate,
+          daysUntil,
+          fiscalPeriod: formatFiscalPeriod(nextFilingType, nextFiscalYear, nextFiscalQuarter),
+        });
+        break;
+      }
+
+      // If this filing is still in the past, continue to the next cycle
+      if (daysUntil <= 0) {
+        currentPeriodEnd = nextPeriodEnd;
+        currentFilingType = nextFilingType;
+        currentFiscalYear = nextFiscalYear;
+        currentFiscalQuarter = nextFiscalQuarter;
+        continue;
+      }
+
+      // If this filing is beyond our window (daysUntil > daysAhead), stop
+      if (daysUntil > daysAhead) {
+        break;
+      }
     }
   }
 
