@@ -232,10 +232,12 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
     # Get content ready to publish (has all formats, not yet sent)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT c.id, c.filing_id, f.ticker, c.tldr_headline
+        SELECT c.id, c.filing_id, comp.ticker,
+               COALESCE(c.key_takeaways->>'headline', c.executive_summary)
         FROM content c
         JOIN filings f ON c.filing_id = f.id
-        WHERE c.status = 'published'
+        JOIN companies comp ON f.company_id = comp.id
+        WHERE c.published_at IS NOT NULL
         AND c.email_html IS NOT NULL
         AND NOT EXISTS (
             SELECT 1 FROM email_deliveries

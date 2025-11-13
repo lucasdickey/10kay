@@ -69,16 +69,15 @@ class EmailPublisher(BasePublisher):
 
             cursor.execute("""
                 SELECT
-                    c.tldr_headline,
+                    COALESCE(c.key_takeaways->>'headline', c.executive_summary),
                     c.email_html,
-                    f.ticker,
+                    co.ticker,
                     co.name as company_name,
                     f.filing_type,
-                    f.fiscal_period,
                     f.fiscal_year
                 FROM content c
                 JOIN filings f ON c.filing_id = f.id
-                JOIN companies co ON f.ticker = co.ticker
+                JOIN companies co ON f.company_id = co.id
                 WHERE c.id = %s
             """, (content_id,))
 
