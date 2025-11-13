@@ -1,7 +1,7 @@
 /**
  * Company Logo Component
  *
- * Displays company logos using Clearbit Logo API with fallback to ticker badge
+ * Displays company logos using local SVG files
  */
 'use client';
 
@@ -16,12 +16,11 @@ interface CompanyLogoProps {
 }
 
 /**
- * Get Clearbit logo URL for a company domain
- * Clearbit provides free high-quality company logos
+ * Get local logo URL for a company ticker
+ * Uses locally generated SVG logos
  */
-export function getLogoUrl(domain: string | null | undefined, size: number = 128): string | null {
-  if (!domain) return null;
-  return `https://logo.clearbit.com/${domain}?size=${size}`;
+export function getLogoUrl(ticker: string): string {
+  return `/company-logos/${ticker.toLowerCase()}.svg`;
 }
 
 /**
@@ -29,10 +28,10 @@ export function getLogoUrl(domain: string | null | undefined, size: number = 128
  */
 export function CompanyLogo({ ticker, domain, size = 48, className = '' }: CompanyLogoProps) {
   const [imageError, setImageError] = useState(false);
-  const logoUrl = getLogoUrl(domain, size);
+  const logoUrl = getLogoUrl(ticker);
 
-  // If no domain or image failed to load, show ticker badge
-  if (!logoUrl || imageError) {
+  // Fallback ticker badge (should rarely be needed with local logos)
+  if (imageError) {
     return (
       <div
         className={`flex items-center justify-center bg-gradient-to-br from-blue-500 to-blue-600 text-white font-bold rounded-lg ${className}`}
@@ -51,7 +50,7 @@ export function CompanyLogo({ ticker, domain, size = 48, className = '' }: Compa
       height={size}
       className={`rounded-lg ${className}`}
       onError={() => setImageError(true)}
-      unoptimized // Clearbit returns optimized images already
+      unoptimized // SVGs don't need Next.js optimization
     />
   );
 }
