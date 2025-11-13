@@ -127,42 +127,42 @@ function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; 
 }
 
 function MarketsSnapshot({ title, analyses }: { title: string; analyses: AnalysisWithDomain[] }) {
-  if (analyses.length === 0) return null;
-
   return (
-    <div className="bg-gray-800 text-white rounded-lg p-4 mb-8">
-      <h3 className="text-xl font-bold mb-4 px-2">{title}</h3>
-      <div className="divide-y divide-gray-700">
-        {analyses.map((analysis) => {
-          const sentiment = getSentimentBadge(analysis.key_takeaways);
-          const kpi = analysis.key_takeaways?.headline || 'View Analysis';
-          // Simple sentiment value for display
-          const sentimentValue = (analysis.key_takeaways?.sentiment || 0).toFixed(2);
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+      <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
+      {analyses.length === 0 ? (
+        <p className="text-sm text-gray-500 py-4 text-center">No recent filings</p>
+      ) : (
+        <div className="divide-y divide-gray-200">
+          {analyses.map((analysis) => {
+            const sentiment = getSentimentBadge(analysis.key_takeaways);
+            const sentimentValue = (analysis.key_takeaways?.sentiment || 0).toFixed(2);
 
-          let sentimentColor = 'text-gray-400';
-          if (analysis.key_takeaways?.sentiment > 0.3) sentimentColor = 'text-green-400';
-          if (analysis.key_takeaways?.sentiment < -0.3) sentimentColor = 'text-red-400';
+            let sentimentColor = 'text-gray-600';
+            if (analysis.key_takeaways?.sentiment > 0.3) sentimentColor = 'text-green-600';
+            if (analysis.key_takeaways?.sentiment < -0.3) sentimentColor = 'text-red-600';
 
-          return (
-            <Link
-              key={analysis.id}
-              href={`/${analysis.slug}`}
-              className="block hover:bg-gray-700 rounded-md"
-            >
-              <div className="flex items-center justify-between p-2">
-                <div>
-                  <div className="font-bold">{analysis.company_name}</div>
-                  <div className="text-sm text-gray-400">{analysis.company_ticker}</div>
+            return (
+              <Link
+                key={analysis.id}
+                href={`/${analysis.slug}`}
+                className="block hover:bg-white hover:shadow-sm rounded-md transition-all"
+              >
+                <div className="flex items-center justify-between py-3 px-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 truncate">{analysis.company_name}</div>
+                    <div className="text-sm text-gray-500">{analysis.company_ticker}</div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className={`font-mono text-lg font-bold ${sentimentColor}`}>{sentimentValue}</div>
+                    <div className={`text-xs font-semibold ${sentimentColor}`}>{sentiment.label}</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className={`font-mono text-lg ${sentimentColor}`}>{sentimentValue}</div>
-                  <div className={`text-sm font-semibold ${sentimentColor}`}>{sentiment.label}</div>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
