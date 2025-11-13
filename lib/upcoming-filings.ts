@@ -175,7 +175,7 @@ export function calculateUpcomingFilings(
         currentPeriodEnd = nextPeriodEnd;
         currentFilingType = nextFilingType;
         currentFiscalYear = nextFiscalYear;
-        currentFiscalQuarter = nextFiscalQuarter;
+        currentFiscalQuarter = nextFiscalQuarter ?? null;
       }
     }
 
