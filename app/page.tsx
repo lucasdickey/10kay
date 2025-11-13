@@ -12,6 +12,52 @@ interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
 }
 
+async function getRecent10Q(): Promise<AnalysisWithDomain[]> {
+  return await query<AnalysisWithDomain>(
+    `
+    SELECT
+      c.id,
+      c.slug,
+      co.ticker as company_ticker,
+      co.name as company_name,
+      f.filing_type,
+      f.filing_date,
+      c.key_takeaways
+    FROM content c
+    JOIN filings f ON c.filing_id = f.id
+    JOIN companies co ON c.company_id = co.id
+    WHERE c.blog_html IS NOT NULL
+    AND f.filing_type = '10-Q'
+    AND f.filing_date >= NOW() - INTERVAL '7 days'
+    ORDER BY f.filing_date DESC
+    LIMIT 10
+  `
+  );
+}
+
+async function getRecent10K(): Promise<AnalysisWithDomain[]> {
+  return await query<AnalysisWithDomain>(
+    `
+    SELECT
+      c.id,
+      c.slug,
+      co.ticker as company_ticker,
+      co.name as company_name,
+      f.filing_type,
+      f.filing_date,
+      c.key_takeaways
+    FROM content c
+    JOIN filings f ON c.filing_id = f.id
+    JOIN companies co ON c.company_id = co.id
+    WHERE c.blog_html IS NOT NULL
+    AND f.filing_type = '10-K'
+    AND f.filing_date >= NOW() - INTERVAL '14 days'
+    ORDER BY f.filing_date DESC
+    LIMIT 10
+  `
+  );
+}
+
 async function getLatestAnalyses(): Promise<AnalysisWithDomain[]> {
   return await query<AnalysisWithDomain>(
     `
@@ -80,11 +126,60 @@ function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; 
   return { label: 'Neutral', className: 'bg-gray-100 text-gray-800' };
 }
 
+function MarketsSnapshot({ title, analyses }: { title: string; analyses: AnalysisWithDomain[] }) {
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+      <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
+      {analyses.length === 0 ? (
+        <p className="text-sm text-gray-500 py-4 text-center">No recent filings</p>
+      ) : (
+        <div className="divide-y divide-gray-200">
+          {analyses.map((analysis) => {
+            const sentiment = getSentimentBadge(analysis.key_takeaways);
+            const sentimentValue = (analysis.key_takeaways?.sentiment || 0).toFixed(2);
+
+            let sentimentColor = 'text-gray-600';
+            if (analysis.key_takeaways?.sentiment > 0.3) sentimentColor = 'text-green-600';
+            if (analysis.key_takeaways?.sentiment < -0.3) sentimentColor = 'text-red-600';
+
+            return (
+              <Link
+                key={analysis.id}
+                href={`/${analysis.slug}`}
+                className="block hover:bg-white hover:shadow-sm rounded-md transition-all"
+              >
+                <div className="flex items-center justify-between py-3 px-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 truncate">{analysis.company_name}</div>
+                    <div className="text-sm text-gray-500">{analysis.company_ticker}</div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className={`font-mono text-lg font-bold ${sentimentColor}`}>{sentimentValue}</div>
+                    <div className={`text-xs font-semibold ${sentimentColor}`}>{sentiment.label}</div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default async function Home() {
-  const [latestAnalyses, companyCount, filingCount] = await Promise.all([
+  const [
+    latestAnalyses,
+    companyCount,
+    filingCount,
+    recent10q,
+    recent10k,
+  ] = await Promise.all([
     getLatestAnalyses(),
     getCompanyCount(),
     getFilingCount(),
+    getRecent10Q(),
+    getRecent10K(),
   ]);
 
   return (
@@ -122,22 +217,24 @@ export default async function Home() {
 
       {/* Main Content */}
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-12">
-        {latestAnalyses.length === 0 ? (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              Processing Latest Filings
-            </h2>
-            <p className="text-gray-600">
-              Our AI is analyzing recent SEC filings. Check back soon for insights!
-            </p>
-          </div>
-        ) : (
-          <>
-            <h2 className="text-2xl font-bold text-gray-900 mb-8">Latest Analyses</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {latestAnalyses.map((analysis) => {
-                const sentiment = getSentimentBadge(analysis.key_takeaways);
-                const headline = analysis.key_takeaways?.headline || '';
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="lg:col-span-3">
+            {latestAnalyses.length === 0 ? (
+              <div className="text-center py-12">
+                <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+                  Processing Latest Filings
+                </h2>
+                <p className="text-gray-600">
+                  Our AI is analyzing recent SEC filings. Check back soon for insights!
+                </p>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold text-gray-900 mb-8">Latest Analyses</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {latestAnalyses.map((analysis) => {
+                    const sentiment = getSentimentBadge(analysis.key_takeaways);
+                    const headline = analysis.key_takeaways?.headline || '';
                 const summary = analysis.executive_summary?.substring(0, 200) + '...' || '';
 
                 return (
@@ -192,10 +289,16 @@ export default async function Home() {
                     </div>
                   </Link>
                 );
-              })}
-            </div>
-          </>
-        )}
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+          <aside className="lg:col-span-1">
+            <MarketsSnapshot title="Recent 10-Qs (Trailing Week)" analyses={recent10q} />
+            <MarketsSnapshot title="Recent 10-Ks (Trailing 2 Weeks)" analyses={recent10k} />
+          </aside>
+        </div>
       </main>
 
       {/* Footer */}
