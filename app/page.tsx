@@ -7,6 +7,7 @@
 import Link from 'next/link';
 import { query, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import UpcomingFilings from '@/components/UpcomingFilings';
 
 interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
@@ -214,6 +215,9 @@ export default async function Home() {
           </div>
         </div>
       </div>
+
+      {/* Upcoming Filings Section */}
+      <UpcomingFilings />
 
       {/* Main Content */}
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-12">
