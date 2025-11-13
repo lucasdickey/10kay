@@ -99,13 +99,6 @@ export function EnhancedFilingCard({
             </span>
           </div>
         </div>
-
-        {/* Metric bars */}
-        <div className="flex gap-1 mt-3">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="flex-1 h-6 bg-blue-500 rounded" />
-          ))}
-        </div>
       </div>
 
       {/* Metrics */}

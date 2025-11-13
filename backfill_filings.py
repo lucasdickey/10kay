@@ -143,7 +143,7 @@ def main():
 
     # Connect to database
     try:
-        conn = psycopg2.connect(config.database_url)
+        conn = psycopg2.connect(config.database.url)
     except psycopg2.Error as e:
         logger.error("Failed to connect to database", exception=e)
         sys.exit(1)
