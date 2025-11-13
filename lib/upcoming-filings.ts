@@ -119,12 +119,13 @@ export function calculateUpcomingFilings(
     let currentFiscalYear = filing.fiscal_year;
     let currentFiscalQuarter = filing.fiscal_quarter;
 
-    // Keep iterating forward until we find a filing in the future window
+    // Keep iterating forward until we find the next future filing
     // Limit iterations to prevent infinite loops (max 20 quarters ~5 years)
     let iterations = 0;
     const MAX_ITERATIONS = 20;
+    let nextFutureFiling: UpcomingFiling | null = null;
 
-    while (iterations < MAX_ITERATIONS) {
+    while (iterations < MAX_ITERATIONS && !nextFutureFiling) {
       iterations++;
 
       let nextPeriodEnd: Date;
@@ -159,32 +160,28 @@ export function calculateUpcomingFilings(
       const estimatedDate = estimateFilingDate(nextPeriodEnd, nextFilingType);
       const daysUntil = getDaysUntil(estimatedDate);
 
-      // If this filing is in the future window, add it and stop
-      if (daysUntil > 0 && daysUntil <= daysAhead) {
-        upcoming.push({
+      // If this filing is in the future, we found it!
+      if (daysUntil > 0) {
+        nextFutureFiling = {
           ticker: filing.ticker,
           name: filing.name,
           filingType: nextFilingType,
           estimatedDate,
           daysUntil,
           fiscalPeriod: formatFiscalPeriod(nextFilingType, nextFiscalYear, nextFiscalQuarter),
-        });
-        break;
-      }
-
-      // If this filing is still in the past, continue to the next cycle
-      if (daysUntil <= 0) {
+        };
+      } else {
+        // Still in the past, continue to the next cycle
         currentPeriodEnd = nextPeriodEnd;
         currentFilingType = nextFilingType;
         currentFiscalYear = nextFiscalYear;
         currentFiscalQuarter = nextFiscalQuarter;
-        continue;
       }
+    }
 
-      // If this filing is beyond our window (daysUntil > daysAhead), stop
-      if (daysUntil > daysAhead) {
-        break;
-      }
+    // Only add filings that are within the specified window
+    if (nextFutureFiling && nextFutureFiling.daysUntil <= daysAhead) {
+      upcoming.push(nextFutureFiling);
     }
   }
 

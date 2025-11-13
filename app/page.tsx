@@ -13,7 +13,7 @@ interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
 }
 
-async function getRecent10Q(): Promise<AnalysisWithDomain[]> {
+async function getRecentFilings(): Promise<AnalysisWithDomain[]> {
   return await query<AnalysisWithDomain>(
     `
     SELECT
@@ -28,30 +28,7 @@ async function getRecent10Q(): Promise<AnalysisWithDomain[]> {
     JOIN filings f ON c.filing_id = f.id
     JOIN companies co ON c.company_id = co.id
     WHERE c.blog_html IS NOT NULL
-    AND f.filing_type = '10-Q'
-    AND f.filing_date >= NOW() - INTERVAL '7 days'
-    ORDER BY f.filing_date DESC
-    LIMIT 10
-  `
-  );
-}
-
-async function getRecent10K(): Promise<AnalysisWithDomain[]> {
-  return await query<AnalysisWithDomain>(
-    `
-    SELECT
-      c.id,
-      c.slug,
-      co.ticker as company_ticker,
-      co.name as company_name,
-      f.filing_type,
-      f.filing_date,
-      c.key_takeaways
-    FROM content c
-    JOIN filings f ON c.filing_id = f.id
-    JOIN companies co ON c.company_id = co.id
-    WHERE c.blog_html IS NOT NULL
-    AND f.filing_type = '10-K'
+    AND f.filing_type IN ('10-Q', '10-K')
     AND f.filing_date >= NOW() - INTERVAL '14 days'
     ORDER BY f.filing_date DESC
     LIMIT 10
@@ -173,14 +150,12 @@ export default async function Home() {
     latestAnalyses,
     companyCount,
     filingCount,
-    recent10q,
-    recent10k,
+    recentFilings,
   ] = await Promise.all([
     getLatestAnalyses(),
     getCompanyCount(),
     getFilingCount(),
-    getRecent10Q(),
-    getRecent10K(),
+    getRecentFilings(),
   ]);
 
   return (
@@ -299,8 +274,7 @@ export default async function Home() {
             )}
           </div>
           <aside className="lg:col-span-1">
-            <MarketsSnapshot title="Recent 10-Qs (Trailing Week)" analyses={recent10q} />
-            <MarketsSnapshot title="Recent 10-Ks (Trailing 2 Weeks)" analyses={recent10k} />
+            <MarketsSnapshot title="Recent Filings (Trailing 2 Weeks)" analyses={recentFilings} />
           </aside>
         </div>
       </main>
