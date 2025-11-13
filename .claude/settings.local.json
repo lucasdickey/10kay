@@ -5,7 +5,9 @@
       "Bash(gh run view:*)",
       "Bash(for i in {1..4})",
       "Bash(gh api:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Read(//tmp/**)",
+      "Bash(npm run build:*)"
     ]
   },
   "outputStyle": "Explanatory"

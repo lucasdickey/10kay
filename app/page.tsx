@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { query, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
 import UpcomingFilings from '@/components/UpcomingFilings';
-import { EnhancedFilingCard } from '@/components/EnhancedFilingCard';
+import { RecentFilingsCarousel } from '@/components/RecentFilingsCarousel';
 
 interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
@@ -136,76 +136,6 @@ function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; 
   return { label: 'Neutral', className: 'bg-gray-100 text-gray-800' };
 }
 
-function EnhancedFilingsSection({
-  title,
-  filingType,
-  analyses,
-  showCount = false
-}: {
-  title: string;
-  filingType: string;
-  analyses: AnalysisWithDomain[];
-  showCount?: boolean;
-}) {
-  // Calculate average sentiment for 10-K sections
-  const avgSentiment = analyses.length > 0
-    ? analyses.reduce((sum, a) => sum + (a.key_takeaways?.sentiment || 0), 0) / analyses.length
-    : 0;
-
-  return (
-    <div className="mb-6">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold text-gray-700">{title}</h3>
-        {showCount && analyses.length > 0 && (
-          <span className="text-sm text-gray-500">{analyses.length} filings</span>
-        )}
-      </div>
-
-      {/* Empty state */}
-      {analyses.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
-          <p className="text-sm text-gray-500">No recent filings</p>
-        </div>
-      ) : (
-        <>
-          {/* Average sentiment card for 10-K */}
-          {filingType === '10-K' && analyses.length > 0 && (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
-              <div className="text-xs text-gray-600 mb-1">Avg Sentiment</div>
-              <div className="flex items-baseline gap-2">
-                <div className="text-3xl font-bold text-gray-900">
-                  {avgSentiment.toFixed(2)}
-                </div>
-                <div className="flex items-center text-sm text-green-600 font-semibold">
-                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                  +12% vs prev period
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Filing cards */}
-          {analyses.map((analysis) => (
-            <EnhancedFilingCard
-              key={analysis.id}
-              ticker={analysis.company_ticker}
-              companyName={analysis.company_name}
-              filingType={analysis.filing_type}
-              sentiment={analysis.key_takeaways?.sentiment || 0}
-              metrics={analysis.key_takeaways?.metrics || {}}
-              slug={analysis.slug || ''}
-              filingDate={analysis.filing_date}
-            />
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
 export default async function Home() {
   const [
     latestAnalyses,
@@ -220,6 +150,11 @@ export default async function Home() {
     getRecent10Q(),
     getRecent10K(),
   ]);
+
+  // Combine and sort recent filings by date
+  const recentFilings = [...recent10Q, ...recent10K].sort(
+    (a, b) => new Date(b.filing_date).getTime() - new Date(a.filing_date).getTime()
+  );
 
   return (
     <div className="min-h-screen bg-white">
@@ -257,23 +192,24 @@ export default async function Home() {
       {/* Upcoming Filings Section */}
       <UpcomingFilings />
 
+      {/* Recent Filings Carousel */}
+      <RecentFilingsCarousel filings={recentFilings} />
+
       {/* Main Content */}
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          <div className="lg:col-span-3">
-            {latestAnalyses.length === 0 ? (
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-                  Processing Latest Filings
-                </h2>
-                <p className="text-gray-600">
-                  Our AI is analyzing recent SEC filings. Check back soon for insights!
-                </p>
-              </div>
-            ) : (
-              <>
-                <h2 className="text-2xl font-bold text-gray-900 mb-8">Latest Analyses</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {latestAnalyses.length === 0 ? (
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+              Processing Latest Filings
+            </h2>
+            <p className="text-gray-600">
+              Our AI is analyzing recent SEC filings. Check back soon for insights!
+            </p>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-2xl font-bold text-gray-900 mb-8">Latest Analyses</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {latestAnalyses.map((analysis) => {
                     const sentiment = getSentimentBadge(analysis.key_takeaways);
                     const headline = analysis.key_takeaways?.headline || '';
@@ -332,27 +268,9 @@ export default async function Home() {
                   </Link>
                 );
                   })}
-                </div>
-              </>
-            )}
-          </div>
-          <aside className="lg:col-span-1">
-            {/* Fixed right rail - sticky positioning */}
-            <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-              <EnhancedFilingsSection
-                title="Recent 10-Qs (Trailing Week)"
-                filingType="10-Q"
-                analyses={recent10Q}
-              />
-              <EnhancedFilingsSection
-                title="Recent 10-Ks (Trailing 2 Weeks)"
-                filingType="10-K"
-                analyses={recent10K}
-                showCount
-              />
             </div>
-          </aside>
-        </div>
+          </>
+        )}
       </main>
 
       {/* Footer */}
