@@ -60,7 +60,7 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Recent Filings</h2>
-            <p className="text-sm text-gray-600 mt-1">Latest 10-Q and 10-K analyses from the past 2 weeks</p>
+            <p className="text-sm text-gray-600 mt-1">Latest 10-Q and 10-K analyses from the past 30-60 days</p>
           </div>
 
           {/* Desktop scroll buttons */}

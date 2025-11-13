@@ -34,9 +34,9 @@ async function getRecent10Q(): Promise<AnalysisWithDomain[]> {
     JOIN companies co ON c.company_id = co.id
     WHERE c.blog_html IS NOT NULL
     AND f.filing_type = '10-Q'
-    AND f.filing_date >= NOW() - INTERVAL '7 days'
+    AND f.filing_date >= NOW() - INTERVAL '30 days'
     ORDER BY f.filing_date DESC
-    LIMIT 5
+    LIMIT 10
   `
   );
 }
@@ -61,9 +61,9 @@ async function getRecent10K(): Promise<AnalysisWithDomain[]> {
     JOIN companies co ON c.company_id = co.id
     WHERE c.blog_html IS NOT NULL
     AND f.filing_type = '10-K'
-    AND f.filing_date >= NOW() - INTERVAL '14 days'
+    AND f.filing_date >= NOW() - INTERVAL '60 days'
     ORDER BY f.filing_date DESC
-    LIMIT 5
+    LIMIT 10
   `
   );
 }

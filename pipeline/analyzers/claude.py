@@ -427,6 +427,23 @@ Respond with only valid JSON, no additional text."""
 
             duration = time.time() - start_time
 
+            # Debug: Print full response to stderr
+            import sys
+            print(f"\n=== DEBUG: Full Bedrock Response ===", file=sys.stderr)
+            print(f"Response keys: {list(response_body.keys())}", file=sys.stderr)
+            print(f"Full response: {response_body}", file=sys.stderr)
+            print(f"=== END DEBUG ===\n", file=sys.stderr)
+
+            # Debug: Log full response structure
+            if self.logger:
+                self.logger.info(
+                    f"Full Bedrock response structure",
+                    extra={
+                        'response_keys': list(response_body.keys()),
+                        'response_body_sample': str(response_body)[:500]
+                    }
+                )
+
             # Extract usage stats
             usage = response_body.get('usage', {})
             prompt_tokens = usage.get('input_tokens', 0)
@@ -446,9 +463,25 @@ Respond with only valid JSON, no additional text."""
             # Extract text from response
             content_blocks = response_body.get('content', [])
             if not content_blocks:
+                if self.logger:
+                    self.logger.error(
+                        f"No content blocks in response",
+                        extra={'response_body': response_body}
+                    )
                 raise AnalysisError("No content in Bedrock response")
 
             text = content_blocks[0].get('text', '')
+
+            if not text:
+                if self.logger:
+                    self.logger.error(
+                        f"Empty text in content block",
+                        extra={
+                            'content_blocks': content_blocks,
+                            'first_block': content_blocks[0] if content_blocks else None
+                        }
+                    )
+                raise AnalysisError("Empty text response from Claude")
 
             return {
                 'text': text,
