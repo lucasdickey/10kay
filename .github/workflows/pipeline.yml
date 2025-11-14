@@ -53,7 +53,22 @@ jobs:
         run: |
           PHASE="${{ github.event.inputs.phase || 'all' }}"
           echo "Running pipeline phase: $PHASE"
-          python3 pipeline/main.py --phase $PHASE
+
+          # Use Level 2 parallel orchestration for all phases
+          if [ "$PHASE" = "all" ]; then
+            echo "Using Level 2 parallel orchestration (Analyze + Generate in parallel + Publish)"
+            python3 orchestrate_parallel.py --publish
+          elif [ "$PHASE" = "analyze" ]; then
+            echo "Running analysis phase with 5 concurrent workers"
+            python3 analyze_parallel.py --workers 5
+          elif [ "$PHASE" = "generate" ]; then
+            echo "Running generation phase with 3 concurrent workers"
+            python3 generate_parallel.py --workers 3
+          else
+            # For fetch and publish phases, use sequential pipeline
+            echo "Running phase: $PHASE"
+            python3 pipeline/main.py --phase $PHASE
+          fi
 
       - name: Upload logs
         if: always()

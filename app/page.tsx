@@ -9,6 +9,7 @@ import { query, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
 import UpcomingFilings from '@/components/UpcomingFilings';
 import { RecentFilingsCarousel } from '@/components/RecentFilingsCarousel';
+import { LatestAnalysesFilter } from '@/components/LatestAnalysesFilter';
 
 interface AnalysisWithDomain extends Analysis {
   company_domain?: string | null;
@@ -93,7 +94,7 @@ async function getLatestAnalyses(): Promise<AnalysisWithDomain[]> {
     JOIN companies co ON c.company_id = co.id
     WHERE c.blog_html IS NOT NULL
     ORDER BY f.filing_date DESC
-    LIMIT 12
+    LIMIT 30
   `
   );
 }
@@ -112,29 +113,6 @@ async function getFilingCount(): Promise<number> {
   return parseInt(result[0]?.count || '0');
 }
 
-function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function getFiscalPeriod(fiscalYear: number | null, fiscalQuarter: number | null): string {
-  if (!fiscalYear) return '';
-  if (fiscalQuarter) return `Q${fiscalQuarter} ${fiscalYear}`;
-  return `FY ${fiscalYear}`;
-}
-
-function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; className: string } {
-  const sentiment = keyTakeaways?.sentiment || 0;
-  if (sentiment > 0.3) {
-    return { label: 'Positive', className: 'bg-green-100 text-green-800' };
-  } else if (sentiment < -0.3) {
-    return { label: 'Negative', className: 'bg-red-100 text-red-800' };
-  }
-  return { label: 'Neutral', className: 'bg-gray-100 text-gray-800' };
-}
 
 export default async function Home() {
   const [
@@ -209,66 +187,7 @@ export default async function Home() {
         ) : (
           <>
             <h2 className="text-2xl font-bold text-gray-900 mb-8">Latest Analyses</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {latestAnalyses.map((analysis) => {
-                    const sentiment = getSentimentBadge(analysis.key_takeaways);
-                    const headline = analysis.key_takeaways?.headline || '';
-                const summary = analysis.executive_summary?.substring(0, 200) + '...' || '';
-
-                return (
-                  <Link
-                    key={analysis.id}
-                    href={`/${analysis.slug}`}
-                    className="block bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
-                  >
-                    {/* Company Header */}
-                    <div className="flex items-start gap-4 p-4 bg-gray-50 border-b">
-                      <CompanyLogo
-                        ticker={analysis.company_ticker}
-                        domain={analysis.company_domain}
-                        size={56}
-                        className="flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-lg font-bold text-gray-900 truncate">
-                              {analysis.company_name}
-                            </h3>
-                            <p className="text-sm text-gray-600 truncate">{analysis.company_ticker}</p>
-                          </div>
-                          <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${sentiment.className}`}>
-                            {sentiment.label}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Content Section */}
-                    <div className="p-6">
-                      {/* Filing Info */}
-                      <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
-                        <span className="font-medium">{analysis.filing_type}</span>
-                        <span>•</span>
-                        <span>{getFiscalPeriod(analysis.fiscal_year, analysis.fiscal_quarter)}</span>
-                        <span>•</span>
-                        <span>{formatDate(analysis.filing_date)}</span>
-                      </div>
-
-                      {/* Headline */}
-                      {headline && (
-                        <h4 className="font-semibold text-gray-900 mb-2 line-clamp-2">
-                          {headline}
-                        </h4>
-                      )}
-
-                      {/* Summary */}
-                      <p className="text-sm text-gray-600 line-clamp-3">{summary}</p>
-                    </div>
-                  </Link>
-                );
-                  })}
-            </div>
+            <LatestAnalysesFilter analyses={latestAnalyses} />
           </>
         )}
       </main>
