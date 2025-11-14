@@ -21,6 +21,15 @@ function getSentimentBadge(sentiment: number): { label: string; className: strin
   return { label: 'Neutral', className: 'bg-gray-100 text-gray-800' };
 }
 
+function getSentimentBorderColor(sentiment: number): string {
+  if (sentiment > 0.3) {
+    return '#16a34a'; // green-600 for positive
+  } else if (sentiment < -0.3) {
+    return '#dc2626'; // red-600 for negative
+  }
+  return '#6b7280'; // gray-500 for neutral
+}
+
 function extractMetrics(metrics: any) {
   if (!metrics) return { primary: [], secondary: [] };
 
@@ -28,18 +37,57 @@ function extractMetrics(metrics: any) {
   const primary: { label: string; value: string; change?: string }[] = [];
   const secondary: { label: string; value: string }[] = [];
 
+  // Helper function to extract value and change from metric strings
+  const parseMetricValue = (metricString: string): { value: string; change?: string } => {
+    if (!metricString) return { value: '' };
+
+    // Try to match patterns like "$XXB (±X.X% YoY)" or "XX.X% (±XXbps YoY)"
+    const valueMatch = metricString.match(/^([^(]+)/);
+    const value = valueMatch?.[1]?.trim() || '';
+
+    const changeMatch = metricString.match(/([+-][\d.]+(?:%|bps))/);
+    const change = changeMatch?.[1] || undefined;
+
+    return { value, change };
+  };
+
+  // Extract Revenue (top-line growth)
   if (metrics.revenue) {
-    const match = metrics.revenue.match(/\$([\d.]+[BMK]?).*?([+-]\d+%)/);
-    if (match) {
+    const { value, change } = parseMetricValue(metrics.revenue);
+    if (value) {
       primary.push({
         label: 'Revenue',
-        value: `$${match[1]}`,
-        change: match[2]
+        value,
+        change
       });
     }
   }
 
-  // Look for growth indicators in nested objects
+  // Extract Net Income (bottom-line profitability)
+  if (metrics.net_income) {
+    const { value, change } = parseMetricValue(metrics.net_income);
+    if (value) {
+      primary.push({
+        label: 'Net Income',
+        value,
+        change
+      });
+    }
+  }
+
+  // Extract R&D Spend (investment in future)
+  if (metrics.rd_spend) {
+    const { value, change } = parseMetricValue(metrics.rd_spend);
+    if (value) {
+      primary.push({
+        label: 'R&D Spend',
+        value,
+        change
+      });
+    }
+  }
+
+  // Look for growth indicators in nested objects (company-specific metrics)
   if (metrics.growth_indicators) {
     const indicators = metrics.growth_indicators;
     const firstKey = Object.keys(indicators)[0];
@@ -89,10 +137,12 @@ export function EnhancedFilingCard({
     backgroundColor = '#fef2f2'; // Subtle red background for negative (red-100 equivalent)
   }
 
+  const borderColor = getSentimentBorderColor(sentiment);
+
   return (
     <div
-      className="border-l-4 border-blue-600 rounded-lg shadow-sm hover:shadow-md transition-shadow h-full flex flex-col"
-      style={{ backgroundColor }}
+      className="rounded-lg shadow-sm hover:shadow-md transition-shadow h-full flex flex-col"
+      style={{ backgroundColor, borderLeft: `6px solid ${borderColor}` }}
     >
       {/* Header */}
       <div className="p-3 border-b border-gray-100">
@@ -119,9 +169,9 @@ export function EnhancedFilingCard({
       {/* Metrics */}
       {(primary.length > 0 || secondary.length > 0) && (
         <div className="p-3 border-b border-gray-100">
-          {/* Primary metrics (Revenue) */}
+          {/* Primary metrics (Revenue, Net Income, R&D Spend - 3 column KPI row) */}
           {primary.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-3 gap-3 mb-3 pb-3 border-b border-gray-100">
               {primary.map((metric, idx) => (
                 <div key={idx}>
                   <div className="text-sm text-gray-500 font-medium">{metric.label}</div>

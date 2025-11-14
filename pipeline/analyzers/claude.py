@@ -246,11 +246,15 @@ Generate a TLDR summary in JSON format with the following structure:
     }}
   ],
   "sentiment_score": 0.5,  // -1 (very negative) to 1 (very positive)
+  "bull_case": "Concise 15-word maximum summary of the strongest bullish argument from this filing",
+  "bear_case": "Concise 15-word maximum summary of the strongest bearish argument or risk from this filing",
   "key_metrics": {{
     "revenue": "value with YoY/QoQ context",
+    "net_income": "value with YoY/QoQ context",
+    "rd_spend": "value with YoY/QoQ context and as % of revenue",
     "growth_rate": "value with trend analysis",
     "margins": "gross and operating with basis point changes",
-    // 5-7 other critical metrics with context
+    // 4-6 other critical metrics with context
   }}
 }}
 
@@ -330,6 +334,8 @@ Generate a deep analysis in JSON format:
   "conclusion": "5-6 paragraphs (300-400 words) synthesizing insights and forward-looking implications. Recap the 2-3 most important themes. Assess whether the business is accelerating or decelerating. Identify key metrics to watch in next quarter. Provide actionable takeaways for operators. End with contrarian or non-obvious insight.",
   "key_metrics": {{
     "revenue": "$XXX.XB (±X.X% YoY, ±X.X% QoQ) with segment breakdown and trend analysis",
+    "net_income": "$XXB (±X.X% YoY, ±X.X% QoQ) with margin context",
+    "rd_spend": "$XB (±X.X% YoY) and X.X% of revenue with trend analysis",
     "gross_margin": "XX.X% (±XXbps YoY) with drivers explanation",
     "operating_margin": "XX.X% (±XXbps YoY) with efficiency analysis",
     "free_cash_flow": "$XXB (±X% YoY) with conversion rate",
@@ -341,6 +347,8 @@ Generate a deep analysis in JSON format:
     // 8-12 critical metrics total with full context
   }},
   "sentiment_score": 0.5,
+  "bull_case": "Concise 15-word maximum summary of the strongest bullish argument from this filing",
+  "bear_case": "Concise 15-word maximum summary of the strongest bearish argument or risk from this filing",
   "risk_factors": [
     "Specific risk 1 with quantified impact assessment",
     "Specific risk 2 with likelihood and mitigation strategy",
@@ -604,6 +612,8 @@ Respond with only valid JSON, no additional text."""
                     tldr_key_points=analysis_data['key_points'],
                     key_metrics=analysis_data.get('key_metrics'),
                     sentiment_score=analysis_data.get('sentiment_score'),
+                    bull_case=analysis_data.get('bull_case'),
+                    bear_case=analysis_data.get('bear_case'),
                     model_version=self.model_id,
                     prompt_tokens=response['prompt_tokens'],
                     completion_tokens=response['completion_tokens'],
@@ -625,6 +635,8 @@ Respond with only valid JSON, no additional text."""
                     deep_conclusion=analysis_data['conclusion'],
                     key_metrics=analysis_data.get('key_metrics'),
                     sentiment_score=analysis_data.get('sentiment_score'),
+                    bull_case=analysis_data.get('bull_case'),
+                    bear_case=analysis_data.get('bear_case'),
                     risk_factors=analysis_data.get('risk_factors'),
                     opportunities=analysis_data.get('opportunities'),
                     model_version=self.model_id,
@@ -707,6 +719,8 @@ Respond with only valid JSON, no additional text."""
                     'points': result.tldr_key_points,
                     'metrics': result.key_metrics,
                     'sentiment': result.sentiment_score,
+                    'bull_case': result.bull_case,
+                    'bear_case': result.bear_case,
                     'model': result.model_version,
                     'tokens': (result.prompt_tokens or 0) + (result.completion_tokens or 0),
                     'duration': result.analysis_duration_seconds

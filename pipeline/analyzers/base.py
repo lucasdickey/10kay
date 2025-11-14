@@ -38,6 +38,8 @@ class AnalysisResult:
     # Metadata
     key_metrics: Optional[Dict[str, Any]] = None  # Financial metrics extracted
     sentiment_score: Optional[float] = None  # -1 to 1
+    bull_case: Optional[str] = None  # 15-word max bullish argument
+    bear_case: Optional[str] = None  # 15-word max bearish argument
     risk_factors: Optional[List[str]] = None
     opportunities: Optional[List[str]] = None
 

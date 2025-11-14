@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { EnhancedFilingCard } from './EnhancedFilingCard';
+import { useState, useRef, useEffect } from "react";
+import { EnhancedFilingCard } from "./EnhancedFilingCard";
 
 interface Analysis {
   id: string;
@@ -33,20 +33,21 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
 
   useEffect(() => {
     updateScrollButtons();
-    window.addEventListener('resize', updateScrollButtons);
-    return () => window.removeEventListener('resize', updateScrollButtons);
+    window.addEventListener("resize", updateScrollButtons);
+    return () => window.removeEventListener("resize", updateScrollButtons);
   }, []);
 
-  const scroll = (direction: 'left' | 'right') => {
+  const scroll = (direction: "left" | "right") => {
     if (!scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
-    const cardWidth = container.querySelector('.filing-card')?.clientWidth || 350;
+    const cardWidth =
+      container.querySelector(".filing-card")?.clientWidth || 350;
     const scrollAmount = cardWidth + 24; // card width + gap
 
     container.scrollBy({
-      left: direction === 'left' ? -scrollAmount : scrollAmount,
-      behavior: 'smooth'
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
     });
   };
 
@@ -61,37 +62,59 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-white">Recent Filings</h2>
-            <p className="text-sm text-gray-300 mt-1">Latest 10-Q and 10-K analyses from the past 30-60 days</p>
+            <p className="text-sm text-gray-300 mt-1">
+              Latest 10-Q and 10-K analyses from the past 60 days
+            </p>
           </div>
 
           {/* Desktop scroll buttons */}
           <div className="hidden md:flex items-center gap-2">
             <button
-              onClick={() => scroll('left')}
+              onClick={() => scroll("left")}
               disabled={!canScrollLeft}
               className={`p-2 rounded-full border ${
                 canScrollLeft
-                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
-                  : 'bg-slate-900 border-slate-800 text-gray-600 cursor-not-allowed'
+                  ? "bg-slate-700 border-slate-600 hover:bg-slate-600 text-white"
+                  : "bg-slate-900 border-slate-800 text-gray-600 cursor-not-allowed"
               } transition-colors`}
               aria-label="Scroll left"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </button>
             <button
-              onClick={() => scroll('right')}
+              onClick={() => scroll("right")}
               disabled={!canScrollRight}
               className={`p-2 rounded-full border ${
                 canScrollRight
-                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
-                  : 'bg-slate-900 border-slate-800 text-gray-600 cursor-not-allowed'
+                  ? "bg-slate-700 border-slate-600 hover:bg-slate-600 text-white"
+                  : "bg-slate-900 border-slate-800 text-gray-600 cursor-not-allowed"
               } transition-colors`}
               aria-label="Scroll right"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
             </button>
           </div>
@@ -103,8 +126,8 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
           onScroll={updateScrollButtons}
           className="flex gap-6 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4"
           style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
           {filings.map((filing) => (
@@ -118,7 +141,7 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
                 filingType={filing.filing_type}
                 sentiment={filing.key_takeaways?.sentiment || 0}
                 metrics={filing.key_takeaways?.metrics || {}}
-                slug={filing.slug || ''}
+                slug={filing.slug || ""}
                 filingDate={filing.filing_date}
                 domain={filing.company_domain}
               />
@@ -129,8 +152,18 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
         {/* Mobile scroll indicator */}
         <div className="md:hidden flex justify-center gap-2 mt-4">
           <div className="text-xs text-gray-400 flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16l-4-4m0 0l4-4m-4 4h18"
+              />
             </svg>
             Swipe to see more
           </div>
