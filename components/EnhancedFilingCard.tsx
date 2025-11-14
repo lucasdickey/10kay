@@ -63,7 +63,6 @@ function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
   });
 }
 
@@ -79,10 +78,22 @@ export function EnhancedFilingCard({
 }: FilingCardProps) {
   const sentimentBadge = getSentimentBadge(sentiment);
   const { primary, secondary } = extractMetrics(metrics);
-  const sentimentValue = sentiment.toFixed(2);
+  // Convert sentiment (-1 to 1) to 2-digit scale (0 to 100)
+  const sentimentValue = Math.round((sentiment + 1) * 50);
+
+  // Determine background color based on sentiment
+  let backgroundColor = '#ffffff';
+  if (sentiment > 0.3) {
+    backgroundColor = '#ecfdf5'; // Subtle green background for positive (green-100 equivalent)
+  } else if (sentiment < -0.3) {
+    backgroundColor = '#fef2f2'; // Subtle red background for negative (red-100 equivalent)
+  }
 
   return (
-    <div className="bg-white border-l-4 border-blue-600 rounded-lg shadow-sm hover:shadow-md transition-shadow h-full flex flex-col">
+    <div
+      className="border-l-4 border-blue-600 rounded-lg shadow-sm hover:shadow-md transition-shadow h-full flex flex-col"
+      style={{ backgroundColor }}
+    >
       {/* Header */}
       <div className="p-3 border-b border-gray-100">
         <div className="flex items-start justify-between">
@@ -106,31 +117,39 @@ export function EnhancedFilingCard({
       </div>
 
       {/* Metrics */}
-      {primary.length > 0 && (
+      {(primary.length > 0 || secondary.length > 0) && (
         <div className="p-3 border-b border-gray-100">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {primary.map((metric, idx) => (
-              <div key={idx}>
-                <div className="text-xs text-gray-500">{metric.label}</div>
-                <div className="font-bold text-gray-900">{metric.value}</div>
-                {metric.change && (
-                  <div className="flex items-center gap-0.5 text-xs text-green-600 font-semibold">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
-                    {metric.change}
-                  </div>
-                )}
-              </div>
-            ))}
-            {secondary.map((metric, idx) => (
-              <div key={`sec-${idx}`}>
-                <div className="text-xs text-gray-500">{metric.label}</div>
-                <div className="font-bold text-gray-900">{metric.value}</div>
-                <div className="text-xs text-gray-500">YoY</div>
-              </div>
-            ))}
-          </div>
+          {/* Primary metrics (Revenue) */}
+          {primary.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              {primary.map((metric, idx) => (
+                <div key={idx}>
+                  <div className="text-sm text-gray-500 font-medium">{metric.label}</div>
+                  <div className="font-bold text-gray-900">{metric.value}</div>
+                  {metric.change && (
+                    <div className="flex items-center gap-0.5 text-xs text-green-600 font-semibold">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                      {metric.change}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Secondary metrics (Contextually important stat - full width) */}
+          {secondary.length > 0 && (
+            <div className="space-y-2">
+              {secondary.map((metric, idx) => (
+                <div key={`sec-${idx}`}>
+                  <div className="text-sm text-gray-500 font-medium">{metric.label}</div>
+                  <div className="font-bold text-gray-900">{metric.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -141,7 +160,7 @@ export function EnhancedFilingCard({
           href={`/${slug}`}
           className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
         >
-          View Analysis
+          Dig In
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>

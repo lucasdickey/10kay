@@ -17,10 +17,10 @@ interface CompanyLogoProps {
 
 /**
  * Get local logo URL for a company ticker
- * Uses locally generated SVG logos
+ * Uses locally fetched PNG logos (favicons)
  */
 export function getLogoUrl(ticker: string): string {
-  return `/company-logos/${ticker.toLowerCase()}.svg`;
+  return `/company-logos/${ticker.toLowerCase()}.png`;
 }
 
 /**
@@ -50,7 +50,6 @@ export function CompanyLogo({ ticker, domain, size = 48, className = '' }: Compa
       height={size}
       className={`rounded-lg ${className}`}
       onError={() => setImageError(true)}
-      unoptimized // SVGs don't need Next.js optimization
     />
   );
 }

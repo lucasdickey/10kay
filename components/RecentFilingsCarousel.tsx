@@ -55,13 +55,13 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
   }
 
   return (
-    <div className="w-full bg-gray-50 border-y py-8">
+    <div className="w-full bg-slate-800 border-y border-slate-700 py-8">
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Recent Filings</h2>
-            <p className="text-sm text-gray-600 mt-1">Latest 10-Q and 10-K analyses from the past 30-60 days</p>
+            <h2 className="text-2xl font-bold text-white">Recent Filings</h2>
+            <p className="text-sm text-gray-300 mt-1">Latest 10-Q and 10-K analyses from the past 30-60 days</p>
           </div>
 
           {/* Desktop scroll buttons */}
@@ -71,8 +71,8 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
               disabled={!canScrollLeft}
               className={`p-2 rounded-full border ${
                 canScrollLeft
-                  ? 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700'
-                  : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
+                  : 'bg-slate-900 border-slate-800 text-gray-600 cursor-not-allowed'
               } transition-colors`}
               aria-label="Scroll left"
             >
@@ -85,8 +85,8 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
               disabled={!canScrollRight}
               className={`p-2 rounded-full border ${
                 canScrollRight
-                  ? 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700'
-                  : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
+                  : 'bg-slate-900 border-slate-800 text-gray-600 cursor-not-allowed'
               } transition-colors`}
               aria-label="Scroll right"
             >
@@ -120,6 +120,7 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
                 metrics={filing.key_takeaways?.metrics || {}}
                 slug={filing.slug || ''}
                 filingDate={filing.filing_date}
+                domain={filing.company_domain}
               />
             </div>
           ))}
@@ -127,7 +128,7 @@ export function RecentFilingsCarousel({ filings }: RecentFilingsCarouselProps) {
 
         {/* Mobile scroll indicator */}
         <div className="md:hidden flex justify-center gap-2 mt-4">
-          <div className="text-xs text-gray-500 flex items-center gap-1">
+          <div className="text-xs text-gray-400 flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
             </svg>
