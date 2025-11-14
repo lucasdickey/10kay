@@ -422,13 +422,35 @@ Respond with only valid JSON, no additional text."""
                 ]
             }
 
-            # Call Bedrock
-            response = self.bedrock_client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(request_body),
-                contentType='application/json',
-                accept='application/json'
-            )
+            # Call Bedrock with retry logic
+            max_retries = 3
+            retry_delay = 1  # seconds
+            last_exception = None
+
+            for attempt in range(max_retries):
+                try:
+                    response = self.bedrock_client.invoke_model(
+                        modelId=self.model_id,
+                        body=json.dumps(request_body),
+                        contentType='application/json',
+                        accept='application/json'
+                    )
+                    break  # Success - exit retry loop
+
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_retries - 1:
+                        # Exponential backoff with jitter
+                        wait_time = retry_delay * (2 ** attempt) + (time.time() % 1)
+                        if self.logger:
+                            self.logger.warning(
+                                f"Bedrock API call failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time:.1f}s",
+                                extra={'error': str(e)}
+                            )
+                        time.sleep(wait_time)
+                    else:
+                        # Final attempt failed
+                        raise AnalysisError(f"Bedrock API failed after {max_retries} attempts: {str(e)}")
 
             # Parse response
             response_body = json.loads(response['body'].read())
