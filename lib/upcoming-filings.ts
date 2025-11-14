@@ -34,14 +34,23 @@ function getNextQuarterEnd(lastPeriodEnd: Date, lastQuarter: number): Date {
   const nextQuarter = lastQuarter === 4 ? 1 : lastQuarter + 1;
   const nextYear = lastQuarter === 4 ? year + 1 : year;
 
-  // Standard calendar quarters
-  const quarterEndMonths = [2, 5, 8, 11]; // Mar, Jun, Sep, Dec (0-indexed)
-  const quarterEndDays = [31, 30, 30, 31]; // Last day of each quarter month
+  // Standard calendar quarters (month is 0-indexed in JavaScript)
+  // Q1: March 31 (month 2, day 31)
+  // Q2: June 30 (month 5, day 30)
+  // Q3: September 30 (month 8, day 30)
+  // Q4: December 31 (month 11, day 31)
+  const quarterEnds: Array<[month: number, day: number]> = [
+    [2, 31],   // Q1: March 31
+    [5, 30],   // Q2: June 30
+    [8, 30],   // Q3: September 30
+    [11, 31],  // Q4: December 31
+  ];
 
-  const endMonth = quarterEndMonths[nextQuarter - 1];
-  const endDay = quarterEndDays[nextQuarter - 1];
-
-  return new Date(nextYear, endMonth, endDay);
+  const [month, day] = quarterEnds[nextQuarter - 1];
+  // Use the 1st of the next month, then subtract 1 day, to handle month edge cases properly
+  const result = new Date(nextYear, month + 1, 0);
+  result.setDate(day);
+  return result;
 }
 
 /**
