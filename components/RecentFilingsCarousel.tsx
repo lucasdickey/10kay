@@ -11,6 +11,7 @@ interface Analysis {
   filing_type: string;
   filing_date: Date;
   key_takeaways: any;
+  company_domain?: string | null;
 }
 
 interface RecentFilingsCarouselProps {

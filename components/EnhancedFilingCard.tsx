@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CompanyLogo } from '@/lib/company-logo';
 
 interface FilingCardProps {
   ticker: string;
@@ -8,15 +9,16 @@ interface FilingCardProps {
   metrics: any;
   slug: string;
   filingDate: Date;
+  domain?: string | null;
 }
 
 function getSentimentBadge(sentiment: number): { label: string; className: string } {
   if (sentiment > 0.3) {
-    return { label: 'Positive', className: 'bg-blue-600 text-white' };
+    return { label: 'Positive', className: 'bg-green-100 text-green-800' };
   } else if (sentiment < -0.3) {
-    return { label: 'Negative', className: 'bg-red-600 text-white' };
+    return { label: 'Negative', className: 'bg-red-100 text-red-800' };
   }
-  return { label: 'Neutral', className: 'bg-gray-600 text-white' };
+  return { label: 'Neutral', className: 'bg-gray-100 text-gray-800' };
 }
 
 function extractMetrics(metrics: any) {
@@ -73,18 +75,20 @@ export function EnhancedFilingCard({
   metrics,
   slug,
   filingDate,
+  domain,
 }: FilingCardProps) {
   const sentimentBadge = getSentimentBadge(sentiment);
   const { primary, secondary } = extractMetrics(metrics);
   const sentimentValue = sentiment.toFixed(2);
 
   return (
-    <div className="bg-white border-l-4 border-blue-600 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-white border-l-4 border-blue-600 rounded-lg shadow-sm hover:shadow-md transition-shadow h-full flex flex-col">
       {/* Header */}
       <div className="p-3 border-b border-gray-100">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2">
+              <CompanyLogo ticker={ticker} domain={domain} size={24} className="flex-shrink-0" />
               <h4 className="text-base font-bold text-gray-900">{ticker}</h4>
               <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-semibold">
                 {filingType}
@@ -131,7 +135,7 @@ export function EnhancedFilingCard({
       )}
 
       {/* Footer */}
-      <div className="px-3 py-2 flex items-center justify-between">
+      <div className="px-3 py-2 flex items-center justify-between mt-auto">
         <span className="text-xs text-gray-500">{formatDate(filingDate)}</span>
         <Link
           href={`/${slug}`}

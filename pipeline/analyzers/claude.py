@@ -568,9 +568,32 @@ Respond with only valid JSON, no additional text."""
                 # Try to extract JSON from markdown code blocks
                 json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', response['text'], re.DOTALL)
                 if json_match:
-                    analysis_data = json.loads(json_match.group(1))
+                    try:
+                        analysis_data = json.loads(json_match.group(1))
+                    except json.JSONDecodeError as e:
+                        if self.logger:
+                            self.logger.error(
+                                f"Failed to parse JSON from markdown code block",
+                                extra={
+                                    'filing_id': filing_id,
+                                    'response_preview': response['text'][:500],
+                                    'error': str(e)
+                                }
+                            )
+                        raise AnalysisError(f"Failed to parse JSON response from Claude: {e}")
                 else:
-                    raise AnalysisError("Failed to parse JSON response from Claude")
+                    # Log the actual response for debugging data quality issues
+                    if self.logger:
+                        self.logger.error(
+                            f"Claude returned non-JSON response (possible invalid filing)",
+                            extra={
+                                'filing_id': filing_id,
+                                'company': filing_metadata.get('ticker'),
+                                'filing_type': filing_metadata.get('filing_type'),
+                                'response': response['text'][:1000]
+                            }
+                        )
+                    raise AnalysisError(f"Failed to parse JSON response from Claude: {response['text'][:200]}")
 
             # Build AnalysisResult
             if analysis_type == AnalysisType.QUICK_SUMMARY:
