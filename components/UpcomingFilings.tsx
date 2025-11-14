@@ -27,7 +27,7 @@ export default function UpcomingFilings() {
   useEffect(() => {
     async function fetchUpcomingFilings() {
       try {
-        const response = await fetch('/api/upcoming-filings?days=60&limit=8');
+        const response = await fetch('/api/upcoming-filings?days=120&limit=8');
         if (!response.ok) {
           throw new Error('Failed to fetch upcoming filings');
         }

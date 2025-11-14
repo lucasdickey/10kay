@@ -103,7 +103,7 @@ function formatFiscalPeriod(filingType: string, year: number, quarter?: number):
  */
 export function calculateUpcomingFilings(
   latestFilings: LatestFiling[],
-  daysAhead: number = 60
+  daysAhead: number = 120
 ): UpcomingFiling[] {
   const now = new Date();
   const upcoming: UpcomingFiling[] = [];
@@ -151,7 +151,7 @@ export function calculateUpcomingFilings(
       } else {
         // If current filing was 10-K, next is Q1 of next fiscal year
         nextFilingType = '10-Q';
-        nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, 0); // Start from Q1
+        nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, 4); // After Q4 (10-K), go to Q1 of next year
         nextFiscalYear = currentFiscalYear + 1;
         nextFiscalQuarter = 1;
       }

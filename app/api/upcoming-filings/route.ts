@@ -7,13 +7,13 @@ import { calculateUpcomingFilings } from '@/lib/upcoming-filings';
  *
  * Returns estimated upcoming SEC filings based on historical filing patterns
  * Query params:
- * - days: Number of days ahead to look (default: 60)
+ * - days: Number of days ahead to look (default: 120)
  * - limit: Maximum number of results to return (default: 10)
  */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const daysAhead = parseInt(searchParams.get('days') || '60');
+    const daysAhead = parseInt(searchParams.get('days') || '120');
     const limit = parseInt(searchParams.get('limit') || '10');
 
     // Get the most recent filing for each enabled company
