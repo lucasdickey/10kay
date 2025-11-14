@@ -184,8 +184,8 @@ class BlogGenerator(BaseGenerator):
 
         # Sentiment indicator
         sentiment = content.get('sentiment_score') or 0
-        sentiment_class = 'positive' if sentiment > 0.2 else 'negative' if sentiment < -0.2 else 'neutral'
-        sentiment_text = 'Positive' if sentiment > 0.2 else 'Negative' if sentiment < -0.2 else 'Neutral'
+        sentiment_class = 'positive' if sentiment > 0.5 else 'negative' if sentiment < -0.2 else 'neutral'
+        sentiment_text = 'Positive' if sentiment > 0.5 else 'Negative' if sentiment < -0.2 else 'Neutral'
 
         # Calculate reading time based on all content
         total_words = (

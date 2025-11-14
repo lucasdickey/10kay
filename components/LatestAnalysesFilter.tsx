@@ -113,9 +113,9 @@ function formatDate(date: Date | string): string {
 
 function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; className: string } {
   const sentiment = keyTakeaways?.sentiment || 0;
-  if (sentiment > 0.3) {
+  if (sentiment > 0.5) {
     return { label: "Positive", className: "bg-green-100 text-green-800" };
-  } else if (sentiment < -0.3) {
+  } else if (sentiment < -0.2) {
     return { label: "Negative", className: "bg-red-100 text-red-800" };
   }
   return { label: "Neutral", className: "bg-gray-100 text-gray-800" };
@@ -123,9 +123,9 @@ function getSentimentBadge(keyTakeaways: Record<string, any>): { label: string; 
 
 function getSentimentHeaderColor(keyTakeaways: Record<string, any>): string {
   const sentiment = keyTakeaways?.sentiment || 0;
-  if (sentiment > 0.3) {
+  if (sentiment > 0.5) {
     return "#ecfdf5"; // green-100
-  } else if (sentiment < -0.3) {
+  } else if (sentiment < -0.2) {
     return "#fce7e6"; // red-100
   }
   return "#f9fafb"; // gray-50
@@ -133,9 +133,9 @@ function getSentimentHeaderColor(keyTakeaways: Record<string, any>): string {
 
 function getSentimentBorderColor(keyTakeaways: Record<string, any>): string {
   const sentiment = keyTakeaways?.sentiment || 0;
-  if (sentiment > 0.3) {
+  if (sentiment > 0.5) {
     return "#16a34a"; // green-600
-  } else if (sentiment < -0.3) {
+  } else if (sentiment < -0.2) {
     return "#dc2626"; // red-600
   }
   return "#6b7280"; // gray-500
