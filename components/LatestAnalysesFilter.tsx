@@ -183,6 +183,9 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
         .map(({ analysis }) => analysis);
     }
 
+    // Filter out analyses with null slugs (cannot render links without slugs)
+    filtered = filtered.filter((analysis) => analysis.slug != null);
+
     return filtered;
   }, [analyses, dateRangeFilter, searchQuery]);
 
