@@ -244,11 +244,9 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
       </div>
 
       {/* Results Count */}
-      {searchQuery && (
-        <div className="mb-4 text-sm text-gray-600">
-          Showing {filteredAnalyses.length} result{filteredAnalyses.length !== 1 ? "s" : ""}
-        </div>
-      )}
+      <div className="mb-4 text-sm text-gray-600">
+        Showing {filteredAnalyses.length} result{filteredAnalyses.length !== 1 ? "s" : ""}
+      </div>
 
       {/* Grid of Cards */}
       {filteredAnalyses.length === 0 ? (

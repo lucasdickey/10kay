@@ -908,6 +908,7 @@ class BlogGenerator(BaseGenerator):
             cursor.execute("""
                 UPDATE content
                 SET blog_html = %s,
+                    published_at = COALESCE(published_at, NOW()),
                     updated_at = NOW()
                 WHERE id = %s
             """, (
@@ -920,7 +921,7 @@ class BlogGenerator(BaseGenerator):
 
             if self.logger:
                 self.logger.info(
-                    f"Saved blog HTML to database",
+                    f"Saved blog HTML to database and marked as published",
                     extra={'content_id': content_id}
                 )
 
