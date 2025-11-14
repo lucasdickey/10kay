@@ -20,7 +20,7 @@ interface LatestAnalysesFilterProps {
   analyses: Analysis[];
 }
 
-type DateRangeFilter = "trailing_week" | "trailing_month" | "trailing_90_days" | "year_to_date";
+type DateRangeFilter = "trailing_2_weeks" | "trailing_month" | "trailing_90_days" | "year_to_date";
 
 /**
  * Simple fuzzy search implementation
@@ -82,9 +82,9 @@ function getDateRangeBoundaries(filter: DateRangeFilter): { start: Date; end: Da
   let start: Date;
 
   switch (filter) {
-    case "trailing_week":
+    case "trailing_2_weeks":
       start = new Date(today);
-      start.setDate(today.getDate() - 7);
+      start.setDate(today.getDate() - 14);
       break;
     case "trailing_month":
       start = new Date(today);
@@ -157,7 +157,7 @@ function getFiscalPeriod(fiscalYear: number | null, fiscalQuarter: number | null
 }
 
 export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("trailing_week");
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("trailing_2_weeks");
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredAnalyses = useMemo(() => {
@@ -187,7 +187,7 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
   }, [analyses, dateRangeFilter, searchQuery]);
 
   const dateRangeOptions: Array<{ value: DateRangeFilter; label: string }> = [
-    { value: "trailing_week", label: "Trailing Week" },
+    { value: "trailing_2_weeks", label: "Trailing 2 Weeks" },
     { value: "trailing_month", label: "Trailing Month" },
     { value: "trailing_90_days", label: "Trailing 90 Days" },
     { value: "year_to_date", label: "Year to Date" },
@@ -195,46 +195,51 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
 
   return (
     <>
-      {/* Filter Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        {/* Date Range Filter */}
-        <select
-          value={dateRangeFilter}
-          onChange={(e) => setDateRangeFilter(e.target.value as DateRangeFilter)}
-          className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 font-medium text-sm hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-        >
-          {dateRangeOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+      {/* Heading and Filter Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 whitespace-nowrap">Latest Analyses</h2>
 
-        {/* Fuzzy Search Input */}
-        <div className="flex-1 relative">
-          <input
-            type="text"
-            placeholder="Search by ticker or company name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 font-medium text-sm hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-              aria-label="Clear search"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          )}
+        {/* Filter Controls */}
+        <div className="flex flex-col sm:flex-row gap-4 flex-1">
+          {/* Date Range Filter */}
+          <select
+            value={dateRangeFilter}
+            onChange={(e) => setDateRangeFilter(e.target.value as DateRangeFilter)}
+            className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 font-medium text-sm hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+          >
+            {dateRangeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Fuzzy Search Input */}
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              placeholder="Search by ticker or company name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 font-medium text-sm hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Clear search"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -298,7 +303,7 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-lg font-bold text-gray-900 truncate">
+                      <h3 className="text-lg font-bold text-gray-900 truncate max-w-[150px]">
                         {analysis.company_name}
                       </h3>
                       <span
@@ -382,6 +387,7 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
           })}
         </div>
       )}
+
     </>
   );
 }
