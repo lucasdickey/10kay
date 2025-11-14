@@ -6,7 +6,7 @@ import { CompanyLogo } from "@/lib/company-logo";
 
 interface Analysis {
   id: string;
-  slug: string;
+  slug: string | null;
   company_ticker: string;
   company_name: string;
   filing_type: string;
