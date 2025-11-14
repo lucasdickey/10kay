@@ -12,6 +12,7 @@ import { RecentFilingsCarousel } from '@/components/RecentFilingsCarousel';
 import { LatestAnalysesFilter } from '@/components/LatestAnalysesFilter';
 
 interface AnalysisWithDomain extends Analysis {
+  slug: string; // Override to ensure non-null (filtered in query)
   company_domain?: string | null;
 }
 
@@ -93,6 +94,7 @@ async function getLatestAnalyses(): Promise<AnalysisWithDomain[]> {
     JOIN filings f ON c.filing_id = f.id
     JOIN companies co ON c.company_id = co.id
     WHERE c.blog_html IS NOT NULL
+    AND c.slug IS NOT NULL
     ORDER BY f.filing_date DESC
     LIMIT 30
   `
