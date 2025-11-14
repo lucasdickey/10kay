@@ -86,8 +86,8 @@ def main():
     parser.add_argument(
         '--workers',
         type=int,
-        default=3,
-        help='Number of concurrent analysis workers (default: 3, max recommended: 5)'
+        default=5,
+        help='Number of concurrent analysis workers (default: 5, max recommended: 8)'
     )
     parser.add_argument(
         '--limit',
@@ -104,8 +104,8 @@ def main():
     args = parser.parse_args()
 
     # Validate worker count
-    if args.workers < 1 or args.workers > 10:
-        print("✗ Workers must be between 1 and 10")
+    if args.workers < 1 or args.workers > 15:
+        print("✗ Workers must be between 1 and 15")
         sys.exit(1)
 
     # Setup logging
