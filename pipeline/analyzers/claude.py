@@ -683,6 +683,20 @@ Respond with only valid JSON, no additional text."""
                 self.logger.error(f"Analysis failed", exception=e, extra={'filing_id': filing_id})
             raise AnalysisError(f"Failed to analyze filing: {e}")
 
+    def _generate_slug(self, ticker: str, filing_type: str, fiscal_year: int, fiscal_quarter: Optional[int]) -> str:
+        """Generate a URL-safe slug for the content record"""
+        ticker_lower = ticker.lower()
+        filing_type_lower = filing_type.lower()
+
+        if filing_type == '10-K':
+            period = 'fy'
+        elif filing_type == '10-Q' and fiscal_quarter:
+            period = f'q{fiscal_quarter}'
+        else:
+            period = 'other'
+
+        return f"{ticker_lower}/{fiscal_year}/{period}/{filing_type_lower}"
+
     def save_to_database(
         self,
         result: AnalysisResult,
@@ -707,9 +721,28 @@ Respond with only valid JSON, no additional text."""
         try:
             cursor = self.db_connection.cursor()
 
-            # Get company_id from filing_id
-            cursor.execute("SELECT company_id FROM filings WHERE id = %s", (result.filing_id,))
-            company_id = cursor.fetchone()[0]
+            # Get company_id and filing metadata from filing_id
+            cursor.execute(
+                "SELECT company_id, ticker FROM filings f JOIN companies c ON f.company_id = c.id WHERE f.id = %s",
+                (result.filing_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise DatabaseError(f"Filing {result.filing_id} not found")
+            company_id, ticker = row
+
+            # Get additional filing info for slug generation
+            cursor.execute(
+                "SELECT filing_type, fiscal_year, fiscal_quarter FROM filings WHERE id = %s",
+                (result.filing_id,)
+            )
+            filing_row = cursor.fetchone()
+            if not filing_row:
+                raise DatabaseError(f"Filing metadata not found for {result.filing_id}")
+            filing_type, fiscal_year, fiscal_quarter = filing_row
+
+            # Generate slug
+            slug = self._generate_slug(ticker, filing_type, fiscal_year, fiscal_quarter)
 
             # Map AnalysisResult to existing content table schema
             # Combine deep analysis sections into text blocks
@@ -718,11 +751,12 @@ Respond with only valid JSON, no additional text."""
                 for section in result.deep_sections:
                     deep_dive_strategy += f"## {section['title']}\n\n{section['content']}\n\n"
 
-            # Insert content record
+            # Insert content record with slug
             cursor.execute("""
                 INSERT INTO content (
                     filing_id,
                     company_id,
+                    slug,
                     executive_summary,
                     key_takeaways,
                     deep_dive_opportunities,
@@ -730,11 +764,12 @@ Respond with only valid JSON, no additional text."""
                     deep_dive_strategy,
                     implications
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 result.filing_id,
                 company_id,
+                slug,
                 result.tldr_summary or result.deep_intro,
                 json.dumps({
                     'headline': result.tldr_headline,
@@ -767,7 +802,7 @@ Respond with only valid JSON, no additional text."""
             if self.logger:
                 self.logger.info(
                     f"Saved analysis to database",
-                    extra={'content_id': content_id, 'filing_id': result.filing_id}
+                    extra={'content_id': content_id, 'filing_id': result.filing_id, 'slug': slug}
                 )
 
             return content_id
