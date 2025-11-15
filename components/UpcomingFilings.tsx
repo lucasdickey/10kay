@@ -27,7 +27,8 @@ export default function UpcomingFilings() {
   useEffect(() => {
     async function fetchUpcomingFilings() {
       try {
-        const response = await fetch('/api/upcoming-filings?days=60&limit=8');
+        // Fetch filings within 90 days to capture Q4 filings (typically ~75-90 days out)
+        const response = await fetch('/api/upcoming-filings?days=90&limit=8');
         if (!response.ok) {
           throw new Error('Failed to fetch upcoming filings');
         }
