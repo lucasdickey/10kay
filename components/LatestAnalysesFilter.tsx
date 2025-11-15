@@ -157,7 +157,7 @@ function getFiscalPeriod(fiscalYear: number | null, fiscalQuarter: number | null
 }
 
 export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("trailing_90_days");
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("year_to_date");
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredAnalyses = useMemo(() => {
