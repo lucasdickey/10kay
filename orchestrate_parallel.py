@@ -7,10 +7,15 @@ the generate phase once analyze reaches 10% completion. This overlaps the phases
 to reduce total pipeline execution time.
 
 Usage:
-    python3 orchestrate_parallel.py                 # Run full parallelized pipeline
-    python3 orchestrate_parallel.py --analyze-only  # Only run analyze phase
-    python3 orchestrate_parallel.py --generate-only # Only run generate phase
-    python3 orchestrate_parallel.py --publish       # Also run publish phase after
+    python3 orchestrate_parallel.py                              # Run with default limits (200 each)
+    python3 orchestrate_parallel.py --analyze-only               # Only run analyze phase
+    python3 orchestrate_parallel.py --generate-only              # Only run generate phase
+    python3 orchestrate_parallel.py --publish                    # Also run publish phase after
+    python3 orchestrate_parallel.py --analyze-limit 500          # Process up to 500 filings
+    python3 orchestrate_parallel.py --generate-limit 500         # Process up to 500 content items
+
+Default limits are set to 200 to ensure scheduled runs complete within 2 hours.
+For manual runs or when more time is available, use higher limits.
 """
 import sys
 import subprocess
@@ -79,16 +84,16 @@ def get_generate_progress(conn) -> tuple:
         return 0, 0, 0
 
 
-def start_analyze_phase():
+def start_analyze_phase(limit: int = 500):
     """Start the parallel analyze phase"""
     print(f"\n{'='*70}")
-    print("STARTING PHASE 2: PARALLEL ANALYZE (5 workers)")
+    print(f"STARTING PHASE 2: PARALLEL ANALYZE (5 workers, limit: {limit})")
     print(f"{'='*70}\n")
 
     try:
         # Start analyze in background with 5 workers
         process = subprocess.Popen(
-            ['python3', 'analyze_parallel.py', '--workers', '5'],
+            ['python3', 'analyze_parallel.py', '--workers', '5', '--limit', str(limit)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -100,16 +105,16 @@ def start_analyze_phase():
         sys.exit(1)
 
 
-def start_generate_phase():
+def start_generate_phase(limit: int = 500):
     """Start the parallel generate phase"""
     print(f"\n{'='*70}")
-    print("STARTING PHASE 3: PARALLEL GENERATE (3 workers)")
+    print(f"STARTING PHASE 3: PARALLEL GENERATE (3 workers, limit: {limit})")
     print(f"{'='*70}\n")
 
     try:
         # Start generate in background with 3 workers
         process = subprocess.Popen(
-            ['python3', 'generate_parallel.py', '--workers', '3'],
+            ['python3', 'generate_parallel.py', '--workers', '3', '--limit', str(limit)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -180,6 +185,18 @@ def main():
         action='store_true',
         help='Also run publish phase after generate completes'
     )
+    parser.add_argument(
+        '--analyze-limit',
+        type=int,
+        default=200,
+        help='Maximum filings to analyze (default: 200 for scheduled runs)'
+    )
+    parser.add_argument(
+        '--generate-limit',
+        type=int,
+        default=200,
+        help='Maximum content items to generate (default: 200 for scheduled runs)'
+    )
 
     args = parser.parse_args()
 
@@ -194,14 +211,16 @@ def main():
     # If generate-only, skip analyze
     if args.generate_only:
         print("\nMode: GENERATE PHASE ONLY")
-        process = start_generate_phase()
+        process = start_generate_phase(args.generate_limit)
         wait_for_process(process, "Generate Phase")
         return
 
     # Start analyze phase
     print("\nMode: PARALLEL EXECUTION (Analyze → auto-trigger Generate → optional Publish)")
+    print(f"Analyze limit: {args.analyze_limit} filings")
+    print(f"Generate limit: {args.generate_limit} content items")
 
-    analyze_process = start_analyze_phase()
+    analyze_process = start_analyze_phase(args.analyze_limit)
     generate_process = None
     publish_process = None
     generate_triggered = False
@@ -218,11 +237,24 @@ def main():
     print("\nWaiting for analyze to reach 10% before triggering generate...\n")
 
     last_status_time = time.time()
-    monitor_interval = 5  # Check progress every 5 seconds
+    monitor_interval = 0.1  # Check more frequently
     status_interval = 30  # Print status every 30 seconds
 
     while analyze_process.poll() is None:
         current_time = time.time()
+
+        # CRITICAL: Consume stdout to prevent buffer deadlock
+        # Non-blocking read of stdout
+        try:
+            import select
+            if analyze_process.stdout:
+                ready, _, _ = select.select([analyze_process.stdout], [], [], 0)
+                if ready:
+                    line = analyze_process.stdout.readline()
+                    if line:
+                        print(line.rstrip())
+        except Exception:
+            pass  # Continue monitoring even if stdout read fails
 
         # Check if we should trigger generate
         if not generate_triggered and not args.analyze_only:
@@ -230,7 +262,7 @@ def main():
 
             if percent >= 10:
                 print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Analyze reached {percent}% - Triggering generate phase...")
-                generate_process = start_generate_phase()
+                generate_process = start_generate_phase(args.generate_limit)
                 generate_triggered = True
 
         # Print status periodically
@@ -248,8 +280,14 @@ def main():
 
         time.sleep(monitor_interval)
 
-    # Wait for analyze to finish
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Analyze phase completed")
+    # Wait for analyze to finish and drain any remaining output
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Analyze phase completed, draining output...")
+    try:
+        if analyze_process.stdout:
+            for line in analyze_process.stdout:
+                print(line.rstrip())
+    except Exception:
+        pass
 
     # If generate was triggered, wait for it
     if generate_triggered and generate_process:
@@ -263,11 +301,12 @@ def main():
             wait_for_process(publish_process, "Publish Phase")
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✓ PIPELINE COMPLETE")
 
-    db_conn.close()
-
-    # Final status
+    # Get final status BEFORE closing connection
     total, analyzed, pending, analyze_percent = get_analyze_progress(db_conn)
     gen_total, gen_html, gen_percent = get_generate_progress(db_conn)
+
+    # Now close the connection
+    db_conn.close()
 
     print(f"\n{'='*70}")
     print("FINAL STATUS")
