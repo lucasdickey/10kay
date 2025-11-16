@@ -15,15 +15,22 @@ let pool: Pool | null = null;
  */
 export function getPool(): Pool {
   if (!pool) {
+    const connectionString = process.env.DATABASE_URL;
+    const isLocal =
+      connectionString?.includes('localhost') ||
+      connectionString?.includes('127.0.0.1');
+
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
-      // AWS RDS requires SSL encryption
-      ssl: {
-        rejectUnauthorized: false, // For development; use proper certs in production
-      },
+      // Use SSL for remote databases (e.g., AWS RDS), but disable for local development
+      ssl: isLocal
+        ? false
+        : {
+            rejectUnauthorized: false, // For development; use proper certs in production
+          },
     });
 
     pool.on('error', (err) => {

@@ -80,7 +80,7 @@ Currently tracking **47 tech companies** including:
 
 **Security**: Palo Alto Networks, CrowdStrike, Zscaler, Okta
 
-**Fintech**: PayPal, Block (Square), Spotify, Uber, DoorDash
+**Fintech**: PayPal, Block (Square), Spotify, Uber, DoorDash, Sofi
 
 **Dev Tools & Platforms**: MongoDB, Atlassian, Unity, Pinterest, Figma
 
