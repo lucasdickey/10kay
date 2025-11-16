@@ -27,29 +27,60 @@ export interface UpcomingFiling {
 }
 
 /**
- * Calculate the next quarter end date based on the last filing
+ * Detect the company's fiscal year-end month from the most recent filing
+ * This determines how quarters are calculated
  */
-function getNextQuarterEnd(lastPeriodEnd: Date, lastQuarter: number): Date {
+function detectFiscalYearEnd(lastPeriodEnd: Date, lastQuarter: number | null, lastFilingType: string): number {
+  // If it's a 10-K, the period end date IS the fiscal year end
+  if (lastFilingType === '10-K') {
+    return lastPeriodEnd.getMonth();
+  }
+
+  // For 10-Q, we need to infer the fiscal year end from the quarter
+  // Standard calendar companies: FY-end in December (month 11)
+  // June fiscal year: FY-end in June (month 5)
+  // Other months are rare in tech but possible
+
+  if (!lastQuarter) return 11; // Default to December
+
+  // Map quarters to their fiscal year-end month assumptions
+  // For companies with Dec fiscal year-end:
+  //   Q1: Jan-Mar (month 2 = Mar)
+  //   Q2: Apr-Jun (month 5 = Jun)
+  //   Q3: Jul-Sep (month 8 = Sep)
+  //   Q4: Oct-Dec (month 11 = Dec)
+
+  // For companies with Jun fiscal year-end:
+  //   Q1: Jul-Sep (month 8 = Sep)
+  //   Q2: Oct-Dec (month 11 = Dec)
+  //   Q3: Jan-Mar (month 2 = Mar)
+  //   Q4: Apr-Jun (month 5 = Jun)
+
+  const periodMonth = lastPeriodEnd.getMonth();
+
+  // Use the actual period end month to infer fiscal year end
+  // The quarter number is relative to the company's fiscal year, not calendar
+  // So Q1 always ends 3 months after fiscal year end
+  return periodMonth;
+}
+
+/**
+ * Calculate the next quarter end date based on the last filing
+ * Accounts for companies with different fiscal year-end dates
+ */
+function getNextQuarterEnd(lastPeriodEnd: Date, lastQuarter: number, lastFilingType: string): Date {
   const year = lastPeriodEnd.getFullYear();
-  const nextQuarter = lastQuarter === 4 ? 1 : lastQuarter + 1;
-  const nextYear = lastQuarter === 4 ? year + 1 : year;
+  const lastPeriodMonth = lastPeriodEnd.getMonth();
 
-  // Standard calendar quarters (month is 0-indexed in JavaScript)
-  // Q1: March 31 (month 2, day 31)
-  // Q2: June 30 (month 5, day 30)
-  // Q3: September 30 (month 8, day 30)
-  // Q4: December 31 (month 11, day 31)
-  const quarterEnds: Array<[month: number, day: number]> = [
-    [2, 31],   // Q1: March 31
-    [5, 30],   // Q2: June 30
-    [8, 30],   // Q3: September 30
-    [11, 31],  // Q4: December 31
-  ];
+  // Calculate months between last period end and next period end
+  // Each quarter is 3 months apart
+  const nextMonthOffset = lastQuarter === 4 ? 12 : 3; // Q4 to Q1 is 12 months, others are 3
+  const nextMonth = (lastPeriodMonth + nextMonthOffset) % 12;
+  const nextYear = year + (lastQuarter === 4 ? 1 : 0);
 
-  const [month, day] = quarterEnds[nextQuarter - 1];
-  // Use the 1st of the next month, then subtract 1 day, to handle month edge cases properly
-  const result = new Date(nextYear, month + 1, 0);
-  result.setDate(day);
+  // Determine the last day of the next month
+  const result = new Date(nextYear, nextMonth + 1, 0);
+
   return result;
 }
 
@@ -153,14 +184,14 @@ export function calculateUpcomingFilings(
         } else {
           // Next is the following quarter
           nextFilingType = '10-Q';
-          nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, currentFiscalQuarter || 1);
+          nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, currentFiscalQuarter || 1, currentFilingType);
           nextFiscalYear = currentFiscalQuarter === 4 ? currentFiscalYear + 1 : currentFiscalYear;
           nextFiscalQuarter = currentFiscalQuarter ? (currentFiscalQuarter % 4) + 1 : 1;
         }
       } else {
         // If current filing was 10-K, next is Q1 of next fiscal year
         nextFilingType = '10-Q';
-        nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, 0); // Start from Q1
+        nextPeriodEnd = getNextQuarterEnd(currentPeriodEnd, 1, currentFilingType); // Q1 is first quarter after 10-K
         nextFiscalYear = currentFiscalYear + 1;
         nextFiscalQuarter = 1;
       }
