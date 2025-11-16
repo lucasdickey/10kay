@@ -76,12 +76,19 @@ def get_records_missing_bull_bear(db_connection, limit=None):
 
 def delete_existing_content(db_connection, content_id):
     """Delete existing content record to allow re-analysis."""
-    cursor = db_connection.cursor()
+    try:
+        cursor = db_connection.cursor()
+    except psycopg2.OperationalError:
+        # Connection closed, reconnect
+        DATABASE_URL = os.getenv('DATABASE_URL')
+        db_connection = psycopg2.connect(DATABASE_URL)
+        cursor = db_connection.cursor()
 
     cursor.execute("DELETE FROM content WHERE id = %s", (content_id,))
 
     db_connection.commit()
     cursor.close()
+    return db_connection
 
 
 def main():
@@ -141,7 +148,7 @@ def main():
         try:
             # Delete existing content
             print(f"  → Deleting existing content for content_id {content_id}")
-            delete_existing_content(db_connection, content_id)
+            db_connection = delete_existing_content(db_connection, content_id)
 
             # Re-analyze with updated prompt (includes bull/bear cases)
             print(f"  → Re-analyzing filing {filing_id}...")
@@ -169,6 +176,14 @@ def main():
             print(f"  ✗ Failed to backfill {ticker}: {str(e)[:100]}")
             logger.error(f"Failed to backfill {content_id}", exception=e)
             fail_count += 1
+            # Attempt to reconnect for next record
+            try:
+                db_connection.close()
+            except:
+                pass
+            DATABASE_URL = os.getenv('DATABASE_URL')
+            db_connection = psycopg2.connect(DATABASE_URL)
+            analyzer.db_connection = db_connection  # Update analyzer's connection
             continue
 
         # Print progress
