@@ -143,11 +143,13 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error('Error fetching upcoming filings:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error fetching upcoming filings:', errorMessage);
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to fetch upcoming filings',
+        debug: errorMessage,
       },
       { status: 500 }
     );
