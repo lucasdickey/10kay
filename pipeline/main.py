@@ -17,6 +17,7 @@ import psycopg2
 
 from utils import get_config, PipelineLogger, setup_root_logger
 from fetchers import EdgarFetcher, FilingType
+from fetchers.earnings_calendar import EarningsCalendarFetcher
 from analyzers import ClaudeAnalyzer, AnalysisType
 from generators import BlogGenerator, ContentFormat
 from publishers import EmailPublisher, PublishChannel
@@ -92,6 +93,50 @@ def fetch_phase(conn, logger, config, tickers: Optional[List[str]] = None):
 
     logger.info(f"Fetch phase complete: {total_fetched} new filings")
     return total_fetched
+
+
+def earnings_calendar_phase(conn, logger, config, tickers: Optional[List[str]] = None):
+    """
+    Fetch upcoming earnings dates from Finnhub API
+
+    This provides actual company-announced earnings dates rather than estimates.
+    Should be run less frequently than SEC filing fetches (e.g., every other day).
+
+    Args:
+        conn: Database connection
+        logger: PipelineLogger
+        config: PipelineConfig
+        tickers: Optional list of specific tickers to fetch
+    """
+    logger.info("=" * 60)
+    logger.info("EARNINGS CALENDAR: Fetching Scheduled Dates")
+    logger.info("=" * 60)
+
+    # Initialize earnings calendar fetcher
+    fetcher = EarningsCalendarFetcher(config, conn, logger)
+
+    # Get tickers if not provided
+    if not tickers:
+        companies = get_enabled_companies(conn)
+        tickers = [c['ticker'] for c in companies]
+
+    logger.info(f"Fetching earnings calendar for {len(tickers)} companies")
+    logger.info("Looking ahead 90 days")
+
+    try:
+        # Fetch upcoming earnings (90 days ahead)
+        count = fetcher.fetch_upcoming_earnings(
+            days_ahead=90,
+            tickers=tickers
+        )
+
+        logger.info(f"✓ Saved {count} scheduled earnings dates")
+        logger.info("Earnings calendar fetch complete")
+        return count
+
+    except Exception as e:
+        logger.error("✗ Failed to fetch earnings calendar", exception=e)
+        return 0
 
 
 def analyze_phase(conn, logger, config):
@@ -288,14 +333,14 @@ def main():
     parser = argparse.ArgumentParser(description='10KAY Pipeline Orchestrator')
     parser.add_argument(
         '--phase',
-        choices=['fetch', 'analyze', 'generate', 'publish', 'all'],
+        choices=['fetch', 'earnings-calendar', 'analyze', 'generate', 'publish', 'all'],
         default='all',
         help='Pipeline phase to run'
     )
     parser.add_argument(
         '--tickers',
         nargs='+',
-        help='Specific ticker symbols to process (fetch phase only)'
+        help='Specific ticker symbols to process (fetch and earnings-calendar phases)'
     )
     parser.add_argument(
         '--dry-run',
@@ -332,6 +377,9 @@ def main():
         # Execute requested phase(s)
         if args.phase in ['fetch', 'all']:
             fetch_phase(conn, logger, config, args.tickers)
+
+        if args.phase in ['earnings-calendar']:
+            earnings_calendar_phase(conn, logger, config, args.tickers)
 
         if args.phase in ['analyze', 'all']:
             analyze_phase(conn, logger, config)

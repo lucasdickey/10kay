@@ -72,11 +72,26 @@ class SECConfig:
 
 
 @dataclass
+class FinnhubConfig:
+    """Finnhub API configuration for earnings calendar"""
+    api_key: str
+
+    @classmethod
+    def from_env(cls) -> 'FinnhubConfig':
+        """Load Finnhub config from environment variables"""
+        api_key = os.getenv('FINNHUB_API_KEY')
+        if not api_key:
+            raise ValueError("FINNHUB_API_KEY environment variable is required")
+        return cls(api_key=api_key)
+
+
+@dataclass
 class PipelineConfig:
     """Main pipeline configuration"""
     aws: AWSConfig
     database: DatabaseConfig
     sec: SECConfig
+    finnhub: FinnhubConfig
     dry_run: bool
     max_retries: int
     retry_delay: float  # seconds
@@ -88,6 +103,7 @@ class PipelineConfig:
             aws=AWSConfig.from_env(),
             database=DatabaseConfig.from_env(),
             sec=SECConfig.from_env(),
+            finnhub=FinnhubConfig.from_env(),
             dry_run=os.getenv('DRY_RUN', 'false').lower() == 'true',
             max_retries=int(os.getenv('MAX_RETRIES', '3')),
             retry_delay=float(os.getenv('RETRY_DELAY', '2.0'))

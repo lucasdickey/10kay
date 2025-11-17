@@ -35,6 +35,7 @@ Tech and startup professionals seeking business strategy insights with a "TBPN m
 - **AWS Bedrock** (Claude Sonnet 4.5) for AI-powered analysis
 - **Python 3.11+** for data processing pipeline
 - **GitHub Actions** for scheduled filing checks (4x daily)
+- **Finnhub API** for real-time earnings calendar (actual company-announced dates)
 
 ### Auth & Payments
 - **Clerk** for authentication and user management
@@ -151,6 +152,7 @@ Required environment variables (see `.env.example` for template):
 | `AWS_REGION` | AWS region (`us-east-1` or `us-west-2`) |
 | `S3_BUCKET_FILINGS` | S3 bucket for PDF storage |
 | `S3_BUCKET_AUDIO` | S3 bucket for audio files |
+| `FINNHUB_API_KEY` | Finnhub API key for earnings calendar ([Get free key](https://finnhub.io/register)) |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk authentication |
 | `CLERK_SECRET_KEY` | Clerk server-side key |
 | `STRIPE_SECRET_KEY` | Stripe payments |
@@ -201,12 +203,14 @@ python3 pipeline/main.py
 
 # Run specific phase
 python3 pipeline/main.py --phase fetch
+python3 pipeline/main.py --phase earnings-calendar  # Fetch scheduled earnings dates (run every other day)
 python3 pipeline/main.py --phase analyze
 python3 pipeline/main.py --phase generate
 python3 pipeline/main.py --phase publish --dry-run
 
 # Process specific companies
 python3 pipeline/main.py --phase fetch --tickers AAPL GOOGL META
+python3 pipeline/main.py --phase earnings-calendar --tickers NVDA MSFT
 ```
 
 See `pipeline/README.md` for detailed documentation.
