@@ -39,8 +39,9 @@ CREATE INDEX idx_scheduled_earnings_company ON scheduled_earnings(company_id);
 CREATE INDEX idx_scheduled_earnings_ticker ON scheduled_earnings(ticker);
 
 -- Partial index for upcoming earnings only (most common query)
+-- Note: Using fixed date instead of CURRENT_DATE because PostgreSQL requires immutable expressions
 CREATE INDEX idx_scheduled_earnings_upcoming ON scheduled_earnings(earnings_date, status)
-    WHERE status = 'scheduled' AND earnings_date >= CURRENT_DATE;
+    WHERE status = 'scheduled';
 
 -- Index for finding filings that match scheduled earnings
 CREATE INDEX idx_scheduled_earnings_filing ON scheduled_earnings(filing_id)

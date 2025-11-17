@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import requests
 
-from ..utils.logger import PipelineLogger
+from utils import PipelineLogger
 
 
 class EarningsCalendarFetcher:
