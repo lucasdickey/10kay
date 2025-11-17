@@ -79,9 +79,9 @@ class FinnhubConfig:
     @classmethod
     def from_env(cls) -> 'FinnhubConfig':
         """Load Finnhub config from environment variables"""
-        api_key = os.getenv('FINNHUB_API_KEY')
+        api_key = os.getenv('FINHUB_API_KEY')
         if not api_key:
-            raise ValueError("FINNHUB_API_KEY environment variable is required")
+            raise ValueError("FINHUB_API_KEY environment variable is required")
         return cls(api_key=api_key)
 
 

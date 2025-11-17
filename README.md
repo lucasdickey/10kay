@@ -152,7 +152,7 @@ Required environment variables (see `.env.example` for template):
 | `AWS_REGION` | AWS region (`us-east-1` or `us-west-2`) |
 | `S3_BUCKET_FILINGS` | S3 bucket for PDF storage |
 | `S3_BUCKET_AUDIO` | S3 bucket for audio files |
-| `FINNHUB_API_KEY` | Finnhub API key for earnings calendar ([Get free key](https://finnhub.io/register)) |
+| `FINHUB_API_KEY` | Finnhub API key for earnings calendar ([Get free key](https://finnhub.io/register)) |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk authentication |
 | `CLERK_SECRET_KEY` | Clerk server-side key |
 | `STRIPE_SECRET_KEY` | Stripe payments |
