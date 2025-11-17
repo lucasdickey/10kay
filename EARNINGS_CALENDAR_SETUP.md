@@ -59,7 +59,7 @@ Previously, the system estimated upcoming filing dates by:
 
 Add to `.env.local`:
 ```bash
-FINNHUB_API_KEY=your_api_key_here
+FINHUB_API_KEY=your_api_key_here
 ```
 
 ### 3. Run Database Migration
@@ -270,24 +270,24 @@ jobs:
       - name: Fetch earnings calendar
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY }}
         run: |
           python3 pipeline/main.py --phase earnings-calendar
 ```
 
 **Required Secrets:**
 - `DATABASE_URL`
-- `FINNHUB_API_KEY`
+- `FINHUB_API_KEY`
 
 ---
 
 ## Troubleshooting
 
-### Error: "FINNHUB_API_KEY environment variable is required"
+### Error: "FINHUB_API_KEY environment variable is required"
 
 **Solution:** Make sure `.env.local` has:
 ```bash
-FINNHUB_API_KEY=your_actual_key
+FINHUB_API_KEY=your_actual_key
 ```
 
 ### Error: "relation 'scheduled_earnings' does not exist"
@@ -339,7 +339,7 @@ curl "https://finnhub.io/api/v1/calendar/earnings?from=2025-11-01&to=2025-12-31&
 ## Next Steps
 
 1. ✅ Run migration to create table
-2. ✅ Add `FINNHUB_API_KEY` to environment
+2. ✅ Add `FINHUB_API_KEY` to environment
 3. ✅ Test with Nvidia: `--phase earnings-calendar --tickers NVDA`
 4. ✅ Verify frontend shows "Scheduled" vs "Estimated"
 5. 🔄 Set up GitHub Actions for automated fetching
