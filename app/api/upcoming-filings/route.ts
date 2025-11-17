@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       WHERE co.enabled = true
         AND se.status = 'scheduled'
         AND se.earnings_date >= CURRENT_DATE
-        AND se.earnings_date <= CURRENT_DATE + $1
+        AND se.earnings_date <= CURRENT_DATE + ($1::integer || ' days')::interval
       ORDER BY se.earnings_date ASC
       `,
       [daysAhead]
