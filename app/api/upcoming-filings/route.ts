@@ -18,6 +18,8 @@ export async function GET(request: Request) {
     const daysAhead = parseInt(searchParams.get('days') || '60');
     const limit = parseInt(searchParams.get('limit') || '10');
 
+    console.log('Fetching upcoming filings with daysAhead:', daysAhead);
+
     // Get scheduled earnings from Finnhub (actual company-announced dates)
     const scheduledEarnings = await query<{
       ticker: string;
@@ -57,6 +59,8 @@ export async function GET(request: Request) {
       [daysAhead]
     );
 
+    console.log('Scheduled earnings found:', scheduledEarnings.length);
+
     // Get the most recent filing for each enabled company (for estimation fallback)
     const latestFilings = await query<{
       company_id: string;
@@ -87,8 +91,11 @@ export async function GET(request: Request) {
       `
     );
 
+    console.log('Latest filings found:', latestFilings.length);
+
     // Calculate estimated upcoming filings for companies without scheduled data
     const estimatedFilings = calculateUpcomingFilings(latestFilings, daysAhead);
+    console.log('Estimated filings calculated:', estimatedFilings.length);
 
     // Create a set of tickers that have scheduled earnings
     const scheduledTickers = new Set(scheduledEarnings.map((se) => se.ticker));
