@@ -393,6 +393,51 @@ Respond with only valid JSON, no additional text."""
             formatted.append(f"### {section_name.replace('_', ' ').title()}\n{content[:5000]}")  # Limit each section
         return "\n\n".join(formatted)
 
+    def _build_comparison_prompt(
+        self,
+        filing_metadata: Dict[str, Any],
+        current_sections: Dict[str, str],
+        previous_sections: Dict[str, str]
+    ) -> str:
+        """Build prompt for Claude for Q-to-Q comparison"""
+        company_name = filing_metadata.get('company_name', filing_metadata['ticker'])
+        filing_type = filing_metadata['filing_type']
+        fiscal_period = filing_metadata['fiscal_period']
+
+        prompt = f"""
+        Analyze the key differences and trends between the two most recent 10-Q filings for {company_name}.
+
+        **Current Filing ({fiscal_period}):**
+        {self._format_sections_for_prompt(current_sections)}
+
+        **Previous Filing:**
+        {self._format_sections_for_prompt(previous_sections)}
+
+        **Task:**
+        Generate a comparative analysis in JSON format with the following structure:
+        {{
+          "comparison_summary": "A high-level summary of the most significant changes and trends observed between the two quarters.",
+          "key_deltas": [
+            {{
+              "area": "Financial Performance",
+              "change": "Description of the change (e.g., revenue growth, margin compression).",
+              "trend": "Analysis of the trend (e.g., accelerating, decelerating, stable)."
+            }},
+            {{
+              "area": "Strategic Initiatives",
+              "change": "Description of any new or evolved strategic initiatives.",
+              "trend": "Analysis of the strategic direction."
+            }},
+            {{
+              "area": "Risk Factors",
+              "change": "Highlight any new or modified risk factors.",
+              "trend": "Analysis of the evolving risk landscape."
+            }}
+          ]
+        }}
+        """
+        return prompt
+
     def _call_bedrock(self, prompt: str) -> Dict[str, Any]:
         """
         Call AWS Bedrock with Claude model
@@ -528,7 +573,8 @@ Respond with only valid JSON, no additional text."""
     def analyze_filing(
         self,
         filing_id: str,
-        analysis_type: AnalysisType = AnalysisType.DEEP_ANALYSIS
+        analysis_type: AnalysisType = AnalysisType.DEEP_ANALYSIS,
+        previous_filing_id: Optional[str] = None
     ) -> AnalysisResult:
         """
         Analyze filing with Claude AI
@@ -579,14 +625,29 @@ Respond with only valid JSON, no additional text."""
                 'company_name': row[5]
             }
 
-            # Fetch filing content
-            content = self.fetch_filing_content(filing_id)
+            if analysis_type == AnalysisType.Q_TO_Q_COMPARISON:
+                if not previous_filing_id:
+                    raise AnalysisError("Previous filing ID is required for Q_TO_Q_COMPARISON")
 
-            # Extract relevant sections
-            sections = self.extract_relevant_sections(content)
+                # Fetch content for both filings
+                current_content = self.fetch_filing_content(filing_id)
+                previous_content = self.fetch_filing_content(previous_filing_id)
 
-            # Build prompt
-            prompt = self._build_analysis_prompt(filing_metadata, sections, analysis_type)
+                # Extract sections for both
+                current_sections = self.extract_relevant_sections(current_content)
+                previous_sections = self.extract_relevant_sections(previous_content)
+
+                # TODO: Build comparison prompt
+                prompt = self._build_comparison_prompt(filing_metadata, current_sections, previous_sections)
+            else:
+                # Fetch filing content
+                content = self.fetch_filing_content(filing_id)
+
+                # Extract relevant sections
+                sections = self.extract_relevant_sections(content)
+
+                # Build prompt
+                prompt = self._build_analysis_prompt(filing_metadata, sections, analysis_type)
 
             # Call Claude
             response = self._call_bedrock(prompt)
@@ -626,7 +687,13 @@ Respond with only valid JSON, no additional text."""
                     raise AnalysisError(f"Failed to parse JSON response from Claude: {response['text'][:200]}")
 
             # Build AnalysisResult
-            if analysis_type == AnalysisType.QUICK_SUMMARY:
+            if analysis_type == AnalysisType.Q_TO_Q_COMPARISON:
+                result = AnalysisResult(
+                    filing_id=filing_id,
+                    comparison_summary=analysis_data.get('comparison_summary'),
+                    key_deltas=analysis_data.get('key_deltas')
+                )
+            elif analysis_type == AnalysisType.QUICK_SUMMARY:
                 result = AnalysisResult(
                     filing_id=filing_id,
                     tldr_headline=analysis_data['headline'],
@@ -700,7 +767,8 @@ Respond with only valid JSON, no additional text."""
     def save_to_database(
         self,
         result: AnalysisResult,
-        status: str = 'published'
+        status: str = 'published',
+        previous_filing_id: Optional[str] = None
     ) -> str:
         """
         Save analysis result to database
@@ -751,10 +819,29 @@ Respond with only valid JSON, no additional text."""
                 for section in result.deep_sections:
                     deep_dive_strategy += f"## {section['title']}\n\n{section['content']}\n\n"
 
-            # Insert content record with slug
-            cursor.execute("""
-                INSERT INTO content (
-                    filing_id,
+            if result.comparison_summary:
+                # Save to filing_comparisons table
+                cursor.execute("""
+                    INSERT INTO filing_comparisons (
+                        current_filing_id,
+                        previous_filing_id,
+                        content
+                    )
+                    VALUES (%s, %s, %s)
+                    RETURNING id
+                """, (
+                    result.filing_id,
+                    previous_filing_id,
+                    json.dumps({
+                        'comparison_summary': result.comparison_summary,
+                        'key_deltas': result.key_deltas
+                    })
+                ))
+            else:
+                # Insert content record with slug
+                cursor.execute("""
+                    INSERT INTO content (
+                        filing_id,
                     company_id,
                     slug,
                     executive_summary,

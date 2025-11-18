@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { queryOne, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import FilingComparison from '@/components/FilingComparison';
 
 interface AnalysisPageProps {
   params: Promise<{
@@ -31,7 +32,7 @@ async function getAnalysisBySlug(
 ): Promise<AnalysisWithDomain | null> {
   const slug = `${ticker}/${year}/${quarter}/${type}`;
 
-  return await queryOne<AnalysisWithDomain>(
+  const analysisPromise = queryOne<AnalysisWithDomain>(
     `
     SELECT
       c.id,
@@ -64,6 +65,31 @@ async function getAnalysisBySlug(
   `,
     [slug]
   );
+
+  const comparisonPromise = queryOne<{ comparison_content: any }>(
+    `
+    SELECT fc.content as comparison_content
+    FROM filing_comparisons fc
+    JOIN filings f ON f.id = fc.current_filing_id
+    JOIN content c ON c.filing_id = f.id
+    WHERE c.slug = $1
+    `,
+    [slug]
+  );
+
+  const [analysis, comparison] = await Promise.all([
+    analysisPromise,
+    comparisonPromise,
+  ]);
+
+  if (!analysis) {
+    return null;
+  }
+
+  return {
+    ...analysis,
+    comparison: comparison?.comparison_content,
+  };
 }
 
 export async function generateMetadata({ params }: AnalysisPageProps) {
@@ -122,6 +148,11 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
         className="analysis-content"
         dangerouslySetInnerHTML={{ __html: analysis.blog_html }}
       />
+      {analysis.comparison && (
+        <div className="p-8">
+          <FilingComparison comparison={analysis.comparison} />
+        </div>
+      )}
     </div>
   );
 }

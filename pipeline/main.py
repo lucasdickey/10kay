@@ -191,6 +191,10 @@ def analyze_phase(conn, logger, config):
                 total_analyzed += 1
                 logger.info(f"✓ Analyzed {ticker} {filing_type}")
 
+                # If it's a 10-Q, trigger a comparison analysis
+                if filing_type == '10-Q':
+                    trigger_comparison_analysis(conn, logger, config, filing_id)
+
         except Exception as e:
             logger.error(f"✗ Failed to analyze {ticker}", exception=e)
             continue
@@ -258,6 +262,47 @@ def generate_phase(conn, logger, config):
 
     logger.info(f"Generation phase complete: {total_generated} items formatted")
     return total_generated
+
+
+def trigger_comparison_analysis(conn, logger, config, current_filing_id: str):
+    """
+    Trigger a Q-to-Q comparison analysis for a newly analyzed 10-Q.
+    """
+    logger.info(f"Triggering comparison analysis for {current_filing_id}")
+    try:
+        cursor = conn.cursor()
+
+        # Find the previous 10-Q for the same company
+        cursor.execute("""
+            SELECT id
+            FROM filings
+            WHERE company_id = (SELECT company_id FROM filings WHERE id = %s)
+            AND filing_type = '10-Q'
+            AND id != %s
+            ORDER BY filing_date DESC
+            LIMIT 1
+        """, (current_filing_id, current_filing_id))
+
+        previous_filing = cursor.fetchone()
+        cursor.close()
+
+        if previous_filing:
+            previous_filing_id = previous_filing[0]
+            logger.info(f"Found previous 10-Q with ID {previous_filing_id}")
+
+            analyzer = ClaudeAnalyzer(config, conn, logger)
+            analyzer.process_filing(
+                filing_id=current_filing_id,
+                analysis_type=AnalysisType.Q_TO_Q_COMPARISON,
+                previous_filing_id=previous_filing_id,
+                skip_existing=False  # Always generate comparison
+            )
+            logger.info(f"✓ Comparison analysis complete for {current_filing_id}")
+        else:
+            logger.warning(f"No previous 10-Q found for {current_filing_id}, skipping comparison.")
+
+    except Exception as e:
+        logger.error(f"✗ Failed to trigger comparison analysis for {current_filing_id}", exception=e)
 
 
 def publish_phase(conn, logger, config, dry_run: bool = False):

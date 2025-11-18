@@ -13,6 +13,7 @@ class AnalysisType(str, Enum):
     """Types of analysis we perform"""
     QUICK_SUMMARY = 'quick_summary'  # For TLDR (free tier)
     DEEP_ANALYSIS = 'deep_analysis'  # For paid tier
+    Q_TO_Q_COMPARISON = 'q_to_q_comparison' # For comparing 10-Qs
 
 
 @dataclass
@@ -25,9 +26,9 @@ class AnalysisResult:
     filing_id: str
 
     # TLDR content (free tier)
-    tldr_headline: str
-    tldr_summary: str  # 2-3 sentences
-    tldr_key_points: List[str]  # 3-5 bullet points
+    tldr_headline: Optional[str] = None
+    tldr_summary: Optional[str] = None
+    tldr_key_points: Optional[List[str]] = None
 
     # Deep analysis (paid tier)
     deep_headline: Optional[str] = None
@@ -48,6 +49,10 @@ class AnalysisResult:
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     analysis_duration_seconds: Optional[float] = None
+
+    # Q-to-Q Comparison
+    comparison_summary: Optional[str] = None
+    key_deltas: Optional[List[Dict[str, str]]] = None
 
 
 class BaseAnalyzer(ABC):
