@@ -58,6 +58,43 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSync() {
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/dev/sync-user', {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setMessage({
+          type: 'success',
+          text: 'Account synced successfully! Reloading...',
+        });
+        // Reload preferences after sync
+        setTimeout(() => {
+          fetchPreferences();
+        }, 1000);
+      } else {
+        setMessage({
+          type: 'error',
+          text: result.error || 'Failed to sync account',
+        });
+      }
+    } catch (error) {
+      console.error('Error syncing user:', error);
+      setMessage({
+        type: 'error',
+        text: 'Failed to sync account',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     setMessage(null);
@@ -168,11 +205,27 @@ export default function SettingsPage() {
         {/* No Preferences Warning */}
         {!preferences && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800">
-              <strong>Account Not Synced:</strong> Your account hasn't been synced to the database yet.
-              This will be automatic once Phase 3.5 (Webhook Integration) is complete.
-              In the meantime, you can sign out and sign back in, or contact support.
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm text-yellow-800 font-semibold mb-2">
+                  Account Not Synced
+                </p>
+                <p className="text-sm text-yellow-700 mb-3">
+                  Your account hasn't been synced to the database yet. This will be automatic once
+                  Phase 3.5 (Webhook Integration) is complete.
+                </p>
+                <p className="text-sm text-yellow-700">
+                  For now, click the button below to manually sync your account.
+                </p>
+              </div>
+              <button
+                onClick={handleSync}
+                disabled={loading}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Syncing...' : 'Sync Now'}
+              </button>
+            </div>
           </div>
         )}
 
