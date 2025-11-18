@@ -24,7 +24,7 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
           <input
             type="checkbox"
             id="email_enabled"
-            checked={preferences.email_enabled}
+            checked={preferences.email_enabled ?? true}
             onChange={(e) => onChange('email_enabled', e.target.checked)}
             className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
           />
@@ -50,7 +50,7 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
               type="radio"
               name="email_frequency"
               value="daily"
-              checked={preferences.email_frequency === 'daily'}
+              checked={(preferences.email_frequency ?? 'daily') === 'daily'}
               onChange={(e) => onChange('email_frequency', e.target.value)}
               className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
             />
@@ -67,7 +67,7 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
               type="radio"
               name="email_frequency"
               value="per_filing"
-              checked={preferences.email_frequency === 'per_filing'}
+              checked={(preferences.email_frequency ?? 'daily') === 'per_filing'}
               onChange={(e) => onChange('email_frequency', e.target.value)}
               className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
             />
@@ -84,7 +84,7 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
               type="radio"
               name="email_frequency"
               value="disabled"
-              checked={preferences.email_frequency === 'disabled'}
+              checked={(preferences.email_frequency ?? 'daily') === 'disabled'}
               onChange={(e) => onChange('email_frequency', e.target.value)}
               className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
             />
@@ -109,7 +109,7 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
               type="radio"
               name="content_preference"
               value="tldr"
-              checked={preferences.content_preference === 'tldr'}
+              checked={(preferences.content_preference ?? 'tldr') === 'tldr'}
               onChange={(e) => onChange('content_preference', e.target.value)}
               className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500"
             />
@@ -128,7 +128,7 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
               type="radio"
               name="content_preference"
               value="full"
-              checked={preferences.content_preference === 'full'}
+              checked={(preferences.content_preference ?? 'tldr') === 'full'}
               onChange={(e) => isPaidTier && onChange('content_preference', e.target.value)}
               disabled={!isPaidTier}
               className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
@@ -151,14 +151,14 @@ export function EmailPreferencesForm({ preferences, onChange }: EmailPreferences
       </div>
 
       {/* Delivery Time (for daily digest) */}
-      {preferences.email_frequency === 'daily' && (
+      {(preferences.email_frequency ?? 'daily') === 'daily' && (
         <div>
           <label htmlFor="delivery_time" className="block font-medium text-gray-900 mb-2">
             Preferred Delivery Time
           </label>
           <select
             id="delivery_time"
-            value={preferences.delivery_time}
+            value={preferences.delivery_time ?? '08:00:00'}
             onChange={(e) => onChange('delivery_time', e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
