@@ -1,0 +1,95 @@
+name: Publish Backfill (Cloud)
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Maximum items to publish (0 = all ready)'
+        required: false
+        default: '0'
+        type: string
+      tier:
+        description: 'Subscriber tier'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'free'
+          - 'paid'
+      dry_run:
+        description: 'Dry run (validate without sending)'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipeline/requirements.txt
+
+      - name: Run publishing
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          FROM_NAME: ${{ secrets.FROM_NAME }}
+        run: |
+          LIMIT_ARG=""
+          if [ "${{ github.event.inputs.limit }}" != "0" ]; then
+            LIMIT_ARG="--limit ${{ github.event.inputs.limit }}"
+          fi
+
+          DRY_RUN_ARG=""
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            DRY_RUN_ARG="--dry-run"
+          fi
+
+          python3 publish_backfill.py \
+            --tier ${{ github.event.inputs.tier }} \
+            $LIMIT_ARG \
+            $DRY_RUN_ARG
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-logs-${{ github.run_number }}
+          path: |
+            *.log
+            publish_summary.txt
+          retention-days: 30
+
+      - name: Post completion summary
+        if: always()
+        run: |
+          echo "## Publishing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ github.event.inputs.dry_run == 'true' && 'DRY RUN' || 'LIVE' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier**: ${{ github.event.inputs.tier }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Max items**: ${{ github.event.inputs.limit == '0' && 'all ready' || github.event.inputs.limit }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID**: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          if [ -f publish_summary.txt ]; then
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            cat publish_summary.txt >> $GITHUB_STEP_SUMMARY
+          fi

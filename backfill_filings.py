@@ -135,7 +135,7 @@ def main():
     config = get_config()
 
     # Setup logging
-    logger = setup_root_logger(level=args.log_level)
+    setup_root_logger(level=args.log_level)
 
     print("=" * 80)
     print(f"SEC Filings Backfill - Started at {datetime.now().isoformat()}")
@@ -147,7 +147,7 @@ def main():
 
     try:
         conn = psycopg2.connect(config.database.url)
-        logger.info("✓ Connected to database")
+        print("✓ Connected to database")
 
         # Get tickers to process
         tickers = get_tickers_to_process(conn, args)
@@ -156,7 +156,7 @@ def main():
         print()
 
         # Initialize fetcher
-        fetcher = EdgarFetcher(config, conn, logger=logger)
+        fetcher = EdgarFetcher(config, conn, logger=None)
 
         # Statistics
         total_10q = 0
@@ -210,7 +210,6 @@ def main():
             except Exception as e:
                 error_msg = str(e)[:120]
                 print(f"  ✗ Error: {error_msg}")
-                logger.error(f"Failed to process {ticker}", exception=e)
                 failed_tickers.append(ticker)
                 print()
 
@@ -251,7 +250,6 @@ def main():
 
     except Exception as e:
         print(f"✗ Fatal error: {e}")
-        logger.error("Fatal error during backfill", exception=e)
         import traceback
         traceback.print_exc()
         sys.exit(1)
