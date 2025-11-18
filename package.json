@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check-users": "tsx scripts/check-users.ts"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.35.1",
     "@types/pg": "^8.15.6",
     "next": "^15.1.4",
     "pg": "^8.16.3",
@@ -24,6 +26,7 @@
     "eslint-config-next": "^15.1.4",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }
