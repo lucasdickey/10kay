@@ -163,6 +163,67 @@ Located in [app/dashboard/page.tsx](app/dashboard/page.tsx)
 - Shows account details and subscription status
 - Placeholder for upcoming features (Phase 3.2)
 
+## 🚀 Deploying to Vercel
+
+### Configure Environment Variables in Vercel
+
+The build will fail without Clerk environment variables. Here's how to add them:
+
+**Option 1: Via Vercel Dashboard**
+1. Go to your Vercel project dashboard
+2. Click **Settings** → **Environment Variables**
+3. Add the following variables:
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = `pk_test_...` (from Clerk dashboard)
+   - `CLERK_SECRET_KEY` = `sk_test_...` (from Clerk dashboard)
+4. Select environment: **Production**, **Preview**, and **Development**
+5. Click **Save**
+6. Redeploy your application
+
+**Option 2: Via Vercel CLI**
+```bash
+# Install Vercel CLI if needed
+npm i -g vercel
+
+# Add environment variables
+vercel env add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+# Paste your Clerk publishable key when prompted
+
+vercel env add CLERK_SECRET_KEY
+# Paste your Clerk secret key when prompted
+```
+
+**Option 3: Via .env.production file (not recommended)**
+You can create a `.env.production` file, but it's better to use Vercel's environment variable system for security.
+
+### Redeploy After Adding Variables
+
+After adding environment variables:
+1. Go to **Deployments** tab in Vercel
+2. Click the three dots (•••) on the latest deployment
+3. Click **Redeploy**
+4. Or push a new commit to trigger a fresh deployment
+
+### Configure Clerk Domains
+
+After deployment, update Clerk to allow your Vercel domain:
+
+1. Go to [Clerk Dashboard → Domains](https://dashboard.clerk.com/last-active?path=domains)
+2. Add your Vercel domain (e.g., `your-app.vercel.app`)
+3. Also add your production domain if you have one
+
+### Troubleshooting Vercel Build Errors
+
+**Error:** `Missing publishableKey`
+- **Solution:** Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` to Vercel environment variables
+
+**Error:** `Missing secret key`
+- **Solution:** Add `CLERK_SECRET_KEY` to Vercel environment variables
+
+**Error:** Environment variables not taking effect
+- **Solution:** Redeploy (don't just rebuild - you need a fresh deployment)
+
+---
+
 ## 🔗 Next Phase: Phase 3.2 - Subscriber Management UI
 
 Once Phase 3.1 is complete, the next steps will be:
@@ -175,6 +236,7 @@ Once Phase 3.1 is complete, the next steps will be:
 
 - [Clerk Next.js Quickstart](https://clerk.com/docs/quickstarts/nextjs)
 - [Clerk Dashboard](https://dashboard.clerk.com)
+- [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables)
 - [GitHub Issue #9: Phase 3.1 Tracker](https://github.com/lucasdickey/10kay/issues/9)
 
 ## ✅ Acceptance Criteria Checklist
