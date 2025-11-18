@@ -18,18 +18,24 @@
 
 ## Overview
 
-The 10KAY database has **7 core tables** (+ 2 planned for Phase 2.5) organized around a filing analysis pipeline:
+The 10KAY database has **10 core tables** (+ 2 planned for Phase 2.5) organized around a filing analysis pipeline:
 
 ```
 companies (47 tech companies)
     ↓
-filings (SEC 10-K/10-Q documents)
-    ↓
-    ├── document_embeddings (vector search - Phase 2.5)
-    └── content (AI-generated analysis)
-            ↓
-            ├── analysis_embeddings (vector search - Phase 2.5)
-            └── email_deliveries (sent to subscribers)
+    ├── ir_pages (investor relations URLs)
+    │       ↓
+    │       └── ir_documents (scraped IR updates)
+    │               ↓
+    │               └── ir_filing_links (±72hr window links)
+    │                       ↓
+    └── filings (SEC 10-K/10-Q documents)
+        ↓
+        ├── document_embeddings (vector search - Phase 2.5)
+        └── content (AI-generated analysis)
+                ↓
+                ├── analysis_embeddings (vector search - Phase 2.5)
+                └── email_deliveries (sent to subscribers)
 ```
 
 **Critical Schema Mismatch:**
@@ -242,7 +248,115 @@ Migration tracking
 
 ---
 
-### 8. document_embeddings (Planned - Phase 2.5)
+### 8. ir_pages
+Investor relations page tracking for companies
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
+| `company_id` | UUID | NOT NULL | - | FK to companies.id |
+| `ticker` | VARCHAR | NOT NULL | - | Denormalized ticker |
+| `ir_url` | TEXT | NOT NULL | - | Company IR page URL |
+| `ir_url_verified_at` | TIMESTAMPTZ | NULL | - | Last URL verification |
+| `scraping_enabled` | BOOLEAN | NULL | true | Enable/disable scraping |
+| `scraping_frequency` | VARCHAR | NULL | 'daily' | daily / on_filing / manual |
+| `last_scraped_at` | TIMESTAMPTZ | NULL | - | Last scrape timestamp |
+| `next_scrape_at` | TIMESTAMPTZ | NULL | - | Scheduled next scrape |
+| `scraper_config` | JSONB | NULL | - | Custom scraping rules |
+| `status` | VARCHAR | NULL | 'active' | active / paused / failed / not_found |
+| `error_message` | TEXT | NULL | - | Last error if failed |
+| `consecutive_failures` | INTEGER | NULL | 0 | Failure counter |
+| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
+| `updated_at` | TIMESTAMPTZ | NULL | now() | Last update |
+
+**Foreign Keys:**
+- `company_id` → `companies.id`
+
+**Indexes:**
+- PRIMARY KEY on `id`
+- UNIQUE on `company_id`
+- INDEX on `next_scrape_at` WHERE scraping_enabled = true
+- GIN INDEX on `scraper_config`
+
+**Purpose:** Store IR page URLs and scraping configuration for each company
+
+---
+
+### 9. ir_documents
+Individual documents/updates scraped from IR pages
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
+| `ir_page_id` | UUID | NOT NULL | - | FK to ir_pages.id |
+| `company_id` | UUID | NOT NULL | - | FK to companies.id |
+| `ticker` | VARCHAR | NOT NULL | - | Denormalized ticker |
+| `title` | TEXT | NOT NULL | - | Document title |
+| `document_url` | TEXT | NOT NULL | - | Document URL |
+| `document_type` | VARCHAR | NULL | - | press_release / earnings_presentation / etc |
+| `published_at` | TIMESTAMPTZ | NOT NULL | - | Document publish date |
+| `scraped_at` | TIMESTAMPTZ | NULL | now() | When scraped |
+| `summary` | TEXT | NULL | - | Extracted summary |
+| `raw_content` | TEXT | NULL | - | Full scraped content |
+| `content_hash` | VARCHAR | NULL | - | SHA256 for deduplication |
+| `analyzed_at` | TIMESTAMPTZ | NULL | - | AI analysis timestamp |
+| `analysis_summary` | TEXT | NULL | - | AI-generated summary |
+| `relevance_score` | NUMERIC(3,2) | NULL | - | 0.00-1.00 relevance |
+| `key_topics` | JSONB | NULL | - | Extracted topics/themes |
+| `status` | VARCHAR | NULL | 'pending' | pending / analyzed / linked / archived |
+| `metadata` | JSONB | NULL | - | Additional data |
+| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
+| `updated_at` | TIMESTAMPTZ | NULL | now() | Last update |
+
+**Foreign Keys:**
+- `ir_page_id` → `ir_pages.id`
+- `company_id` → `companies.id`
+
+**Indexes:**
+- PRIMARY KEY on `id`
+- UNIQUE on `(ir_page_id, content_hash)`
+- INDEX on `company_id, published_at DESC`
+- INDEX on `status`
+- INDEX on `scraped_at` WHERE status = 'pending'
+- GIN INDEX on `key_topics`
+
+**Purpose:** Track individual IR documents within ±72 hour windows of filings
+
+---
+
+### 10. ir_filing_links
+Links between IR documents and SEC filings (many-to-many)
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
+| `ir_document_id` | UUID | NOT NULL | - | FK to ir_documents.id |
+| `filing_id` | UUID | NOT NULL | - | FK to filings.id |
+| `time_delta_hours` | INTEGER | NULL | - | Hours from filing (±72) |
+| `window_type` | VARCHAR | NOT NULL | - | pre_filing / post_filing / concurrent |
+| `link_type` | VARCHAR | NULL | 'auto' | auto / manual / suggested |
+| `relevance_reason` | TEXT | NULL | - | Why linked (AI-generated) |
+| `confidence_score` | NUMERIC(3,2) | NULL | - | 0.00-1.00 confidence |
+| `show_on_filing_page` | BOOLEAN | NULL | true | Display on 10-K/Q page |
+| `show_on_ticker_page` | BOOLEAN | NULL | true | Display on ticker page |
+| `display_order` | INTEGER | NULL | 0 | Display ordering |
+| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
+| `created_by` | VARCHAR | NULL | 'system' | system / ai / admin |
+
+**Foreign Keys:**
+- `ir_document_id` → `ir_documents.id`
+- `filing_id` → `filings.id`
+
+**Indexes:**
+- PRIMARY KEY on `id`
+- UNIQUE on `(ir_document_id, filing_id)`
+- INDEX on `filing_id, display_order` WHERE show_on_filing_page = true
+
+**Purpose:** Link IR documents to filings within ±72 hour windows
+
+---
+
+### 11. document_embeddings (Planned - Phase 2.5)
 Vector embeddings for raw SEC filing content (chunked)
 
 | Column | Type | Nullable | Default | Description |
@@ -367,8 +481,15 @@ Additional company data:
 ```
 companies (1)
     ↓
+    ├── ir_pages (1) via company_id
+    │       ↓
+    │       └── ir_documents (*) via ir_page_id
+    │               ↓
+    │               └── ir_filing_links (*) via ir_document_id
+    │
     ├── filings (*) via company_id
     │       ↓
+    │       ├── ir_filing_links (*) via filing_id
     │       ├── content (1) via filing_id
     │       │       ↓
     │       │       ├── email_deliveries (*) via content_id
@@ -464,13 +585,14 @@ fiscal_period = f'Q{fiscal_quarter}' if fiscal_quarter else 'FY'
 | # | Filename | Description | Applied |
 |---|----------|-------------|---------|
 | 001 | initial_schema.sql | Create all tables | ✅ |
-| 002 | seed_companies.sql | Load 47 tech companies | ✅ |
-| 003 | (skipped) | - | - |
+| 002 | subscribers.sql | Add subscribers, email_deliveries | ✅ |
+| 003 | indexes_and_rls.sql | Add indexes and RLS policies | ✅ |
 | 004 | fix_processing_logs.sql | Add level column | ✅ |
 | 005 | make_status_nullable.sql | Allow NULL status | ✅ |
 | 006 | add_html_columns.sql | Add blog_html, email_html | ✅ |
-| 007 | (planned) | Add ai_analysis, status columns | ⏳ |
-| 008 | add_vector_embeddings.sql | Add document_embeddings, analysis_embeddings tables | 📋 Phase 2.5 |
+| 007 | add_scheduled_earnings.sql | Add scheduled_earnings table | ✅ |
+| 008 | add_investor_relations_tracking.sql | Add ir_pages, ir_documents, ir_filing_links | 🚀 Ready to apply |
+| 009 | add_vector_embeddings.sql | Add document_embeddings, analysis_embeddings tables | 📋 Phase 2.5 |
 
 ---
 

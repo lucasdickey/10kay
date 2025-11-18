@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { queryOne, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import IRDocuments from '@/components/IRDocuments';
 
 interface AnalysisPageProps {
   params: Promise<{
@@ -111,6 +112,11 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
         className="analysis-content"
         dangerouslySetInnerHTML={{ __html: analysis.blog_html }}
       />
+
+      {/* IR Documents Section */}
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <IRDocuments filingId={analysis.filing_id} />
+      </div>
     </div>
   );
 }

@@ -1,0 +1,192 @@
+{
+  "ir_pages": [
+    {
+      "ticker": "AAPL",
+      "ir_url": "https://investor.apple.com/investor-relations/default.aspx"
+    },
+    {
+      "ticker": "MSFT",
+      "ir_url": "https://www.microsoft.com/en-us/investor"
+    },
+    {
+      "ticker": "GOOGL",
+      "ir_url": "https://abc.xyz/investor/"
+    },
+    {
+      "ticker": "GOOG",
+      "ir_url": "https://abc.xyz/investor/"
+    },
+    {
+      "ticker": "AMZN",
+      "ir_url": "https://ir.aboutamazon.com/overview/default.aspx"
+    },
+    {
+      "ticker": "NVDA",
+      "ir_url": "https://investor.nvidia.com/home/default.aspx"
+    },
+    {
+      "ticker": "META",
+      "ir_url": "https://investor.fb.com/"
+    },
+    {
+      "ticker": "TSLA",
+      "ir_url": "https://ir.tesla.com/"
+    },
+    {
+      "ticker": "BRK.B",
+      "ir_url": "https://www.berkshirehathaway.com/reports.html"
+    },
+    {
+      "ticker": "UNH",
+      "ir_url": "https://www.unitedhealthgroup.com/investors.html"
+    },
+    {
+      "ticker": "XOM",
+      "ir_url": "https://corporate.exxonmobil.com/investors"
+    },
+    {
+      "ticker": "JNJ",
+      "ir_url": "https://www.investor.jnj.com/"
+    },
+    {
+      "ticker": "JPM",
+      "ir_url": "https://www.jpmorganchase.com/ir/investor-relations"
+    },
+    {
+      "ticker": "V",
+      "ir_url": "https://investor.visa.com/"
+    },
+    {
+      "ticker": "PG",
+      "ir_url": "https://www.pginvestor.com/"
+    },
+    {
+      "ticker": "MA",
+      "ir_url": "https://investor.mastercard.com/"
+    },
+    {
+      "ticker": "HD",
+      "ir_url": "https://ir.homedepot.com/"
+    },
+    {
+      "ticker": "CVX",
+      "ir_url": "https://www.chevron.com/investors"
+    },
+    {
+      "ticker": "MRK",
+      "ir_url": "https://www.merck.com/company-overview/investors/"
+    },
+    {
+      "ticker": "ABBV",
+      "ir_url": "https://investors.abbvie.com/"
+    },
+    {
+      "ticker": "KO",
+      "ir_url": "https://investors.coca-colacompany.com/"
+    },
+    {
+      "ticker": "PEP",
+      "ir_url": "https://www.pepsico.com/investors"
+    },
+    {
+      "ticker": "COST",
+      "ir_url": "https://investor.costco.com/"
+    },
+    {
+      "ticker": "AVGO",
+      "ir_url": "https://investors.broadcom.com/"
+    },
+    {
+      "ticker": "TMO",
+      "ir_url": "https://ir.thermofisher.com/"
+    },
+    {
+      "ticker": "MCD",
+      "ir_url": "https://corporate.mcdonalds.com/corpmcd/investors.html"
+    },
+    {
+      "ticker": "ABT",
+      "ir_url": "https://investors.abbott.com/"
+    },
+    {
+      "ticker": "CSCO",
+      "ir_url": "https://investor.cisco.com/"
+    },
+    {
+      "ticker": "ACN",
+      "ir_url": "https://investor.accenture.com/"
+    },
+    {
+      "ticker": "LLY",
+      "ir_url": "https://investor.lilly.com/"
+    },
+    {
+      "ticker": "ORCL",
+      "ir_url": "https://investor.oracle.com/"
+    },
+    {
+      "ticker": "WMT",
+      "ir_url": "https://stock.walmart.com/"
+    },
+    {
+      "ticker": "DHR",
+      "ir_url": "https://investors.danaher.com/"
+    },
+    {
+      "ticker": "ADBE",
+      "ir_url": "https://www.adobe.com/investor-relations.html"
+    },
+    {
+      "ticker": "CRM",
+      "ir_url": "https://investor.salesforce.com/"
+    },
+    {
+      "ticker": "NKE",
+      "ir_url": "https://investors.nike.com/"
+    },
+    {
+      "ticker": "TXN",
+      "ir_url": "https://investor.ti.com/"
+    },
+    {
+      "ticker": "NEE",
+      "ir_url": "https://www.investor.nexteraenergy.com/"
+    },
+    {
+      "ticker": "PM",
+      "ir_url": "https://www.pmi.com/investor-relations"
+    },
+    {
+      "ticker": "RTX",
+      "ir_url": "https://investors.rtx.com/"
+    },
+    {
+      "ticker": "UNP",
+      "ir_url": "https://www.up.com/investors/"
+    },
+    {
+      "ticker": "QCOM",
+      "ir_url": "https://investor.qualcomm.com/"
+    },
+    {
+      "ticker": "LOW",
+      "ir_url": "https://corporate.lowes.com/investors"
+    },
+    {
+      "ticker": "HON",
+      "ir_url": "https://investor.honeywell.com/"
+    },
+    {
+      "ticker": "UPS",
+      "ir_url": "https://investors.ups.com/"
+    },
+    {
+      "ticker": "INTC",
+      "ir_url": "https://www.intc.com/investor-relations"
+    },
+    {
+      "ticker": "AMD",
+      "ir_url": "https://ir.amd.com/"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { query, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import RecentIRUpdates from '@/components/RecentIRUpdates';
 
 interface CompanyPageProps {
   params: Promise<{
@@ -143,6 +144,11 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
 
       {/* Main Content */}
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-12">
+        {/* Recent IR Updates */}
+        <div className="mb-12">
+          <RecentIRUpdates ticker={companyData.ticker} limit={5} />
+        </div>
+
         <h2 className="text-2xl font-bold text-gray-900 mb-8">
           SEC Filing Analyses ({companyData.analyses.length})
         </h2>
