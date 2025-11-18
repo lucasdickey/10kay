@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
@@ -95,63 +95,72 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleSave() {
-    setSaving(true);
-    setMessage(null);
+  function handleFieldChange(field: string, value: any) {
+    const updatedFormData = { ...formData, [field]: value };
+    setFormData(updatedFormData);
 
-    try {
-      const updates: UpdateUserPreferences = {
-        email_enabled: formData.email_enabled,
-        email_frequency: formData.email_frequency as 'daily' | 'per_filing' | 'disabled',
-        content_preference: formData.content_preference as 'tldr' | 'full',
-        delivery_time: formData.delivery_time,
-        interested_companies: formData.interested_companies,
-      };
+    // Auto-save after field change
+    autoSave(updatedFormData);
+  }
 
-      const response = await fetch('/api/user/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+  // Debounced auto-save function
+  const autoSaveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-      const result = await response.json();
+  async function autoSave(data: Partial<UserPreferences>) {
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
 
-      if (result.success) {
-        setPreferences(result.data);
-        setMessage({
-          type: 'success',
-          text: 'Preferences saved successfully!',
+    // Set new timeout to save after 500ms of no changes
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      if (!preferences) return;
+
+      setSaving(true);
+      setMessage(null);
+
+      try {
+        const updates: UpdateUserPreferences = {
+          email_enabled: data.email_enabled,
+          email_frequency: data.email_frequency as 'daily' | 'per_filing' | 'disabled',
+          content_preference: data.content_preference as 'tldr' | 'full',
+          delivery_time: data.delivery_time,
+          interested_companies: data.interested_companies,
+        };
+
+        const response = await fetch('/api/user/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
         });
-        // Clear message after 3 seconds
-        setTimeout(() => setMessage(null), 3000);
-      } else {
+
+        const result = await response.json();
+
+        if (result.success) {
+          setPreferences(result.data);
+          setMessage({
+            type: 'success',
+            text: 'Saved!',
+          });
+          // Clear success message after 2 seconds
+          setTimeout(() => setMessage(null), 2000);
+        } else {
+          setMessage({
+            type: 'error',
+            text: result.error || 'Failed to save',
+          });
+        }
+      } catch (error) {
+        console.error('Error auto-saving preferences:', error);
         setMessage({
           type: 'error',
-          text: result.error || 'Failed to save preferences',
+          text: 'Failed to save',
         });
+      } finally {
+        setSaving(false);
       }
-    } catch (error) {
-      console.error('Error saving preferences:', error);
-      setMessage({
-        type: 'error',
-        text: 'Failed to save preferences',
-      });
-    } finally {
-      setSaving(false);
-    }
+    }, 500);
   }
-
-  function handleFieldChange(field: string, value: any) {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  }
-
-  const hasChanges = JSON.stringify(formData) !== JSON.stringify({
-    email_enabled: preferences?.email_enabled,
-    email_frequency: preferences?.email_frequency,
-    content_preference: preferences?.content_preference,
-    delivery_time: preferences?.delivery_time,
-    interested_companies: preferences?.interested_companies || [],
-  });
 
   if (!isLoaded || !isSignedIn) {
     return null;
@@ -251,26 +260,26 @@ export default function SettingsPage() {
             />
           </section>
 
-          {/* Save Button */}
-          <div className="flex items-center justify-between bg-white rounded-lg shadow p-6">
-            <div className="text-sm text-gray-600">
-              {hasChanges ? (
-                <span className="text-yellow-600">● You have unsaved changes</span>
+          {/* Auto-save Status */}
+          <div className="flex items-center justify-center bg-white rounded-lg shadow p-4">
+            <div className="text-sm text-gray-600 flex items-center gap-2">
+              {saving ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Saving...</span>
+                </>
               ) : (
-                <span className="text-green-600">✓ All changes saved</span>
+                <>
+                  <svg className="h-4 w-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-green-600">Changes saved automatically</span>
+                </>
               )}
             </div>
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || saving || !preferences}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                !hasChanges || saving || !preferences
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {saving ? 'Saving...' : 'Save Preferences'}
-            </button>
           </div>
         </div>
       </main>
