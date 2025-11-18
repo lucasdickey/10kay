@@ -211,20 +211,20 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* No Preferences Warning */}
-        {!preferences && (
+        {/* No Preferences Warning - DEV ONLY */}
+        {!preferences && process.env.NODE_ENV === 'development' && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <p className="text-sm text-yellow-800 font-semibold mb-2">
-                  Account Not Synced
+                  [DEV] Account Not Synced
                 </p>
                 <p className="text-sm text-yellow-700 mb-3">
-                  Your account hasn't been synced to the database yet. This will be automatic once
-                  Phase 3.5 (Webhook Integration) is complete.
+                  Your account hasn't been synced to the database yet. In production, this happens
+                  automatically via Clerk webhooks.
                 </p>
                 <p className="text-sm text-yellow-700">
-                  For now, click the button below to manually sync your account.
+                  For development testing, click the button below to manually sync.
                 </p>
               </div>
               <button
@@ -235,6 +235,19 @@ export default function SettingsPage() {
                 {loading ? 'Syncing...' : 'Sync Now'}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* No Preferences Error - PRODUCTION */}
+        {!preferences && process.env.NODE_ENV === 'production' && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-sm text-red-800 font-semibold mb-2">
+              Account Sync Error
+            </p>
+            <p className="text-sm text-red-700">
+              Your account could not be loaded. Please try signing out and signing back in.
+              If the problem persists, contact support.
+            </p>
           </div>
         )}
 
