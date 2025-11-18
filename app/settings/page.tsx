@@ -39,7 +39,7 @@ export default function SettingsPage() {
           email_frequency: result.data.email_frequency,
           content_preference: result.data.content_preference,
           delivery_time: result.data.delivery_time,
-          interested_companies: result.data.interested_companies,
+          interested_companies: result.data.interested_companies || [],
         });
       } else {
         setMessage({
@@ -113,7 +113,7 @@ export default function SettingsPage() {
     email_frequency: preferences?.email_frequency,
     content_preference: preferences?.content_preference,
     delivery_time: preferences?.delivery_time,
-    interested_companies: preferences?.interested_companies,
+    interested_companies: preferences?.interested_companies || [],
   });
 
   if (!isLoaded || !isSignedIn) {
