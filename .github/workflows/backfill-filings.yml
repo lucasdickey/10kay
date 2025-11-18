@@ -1,0 +1,99 @@
+name: Backfill SEC Filings
+
+on:
+  workflow_dispatch:
+    inputs:
+      companies_source:
+        description: 'Source of companies to process'
+        required: true
+        default: 'all-enabled'
+        type: choice
+        options:
+          - all-enabled
+          - predefined-50
+          - custom-list
+      custom_tickers:
+        description: 'Custom comma-separated ticker list (only if custom-list selected)'
+        required: false
+        type: string
+      num_10q:
+        description: 'Number of 10-Q filings per company'
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+      num_10k:
+        description: 'Number of 10-K filings per company'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '0'
+          - '1'
+          - '2'
+          - '3'
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480  # 8 hours for large backfills
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipeline/requirements.txt
+
+      - name: Run backfill
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BEDROCK_MODEL_ID: ${{ secrets.AWS_BEDROCK_MODEL_ID }}
+          S3_BUCKET_FILINGS: ${{ secrets.S3_BUCKET_FILINGS }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY }}
+        run: |
+          python3 backfill_filings.py \
+            --source ${{ github.event.inputs.companies_source }} \
+            --num-10q ${{ github.event.inputs.num_10q }} \
+            --num-10k ${{ github.event.inputs.num_10k }} \
+            ${{ github.event.inputs.custom_tickers && format('--tickers {0}', github.event.inputs.custom_tickers) || '' }}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-logs-${{ github.run_number }}
+          path: |
+            *.log
+            backfill_*.txt
+          retention-days: 30
+
+      - name: Post completion summary
+        if: always()
+        run: |
+          echo "## Backfill Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Source**: ${{ github.event.inputs.companies_source }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **10-Q per company**: ${{ github.event.inputs.num_10q }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **10-K per company**: ${{ github.event.inputs.num_10k }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID**: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          if [ -f backfill_summary.txt ]; then
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            cat backfill_summary.txt >> $GITHUB_STEP_SUMMARY
+          fi

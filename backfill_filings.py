@@ -1,195 +1,259 @@
 #!/usr/bin/env python3
 """
-Backfill script to fetch all historical filings for tracked companies
+Flexible backfill script for fetching multiple filings per company.
 
-This script bypasses the standard pipeline's limit=1 behavior and fetches
-all available 10-K and 10-Q filings from SEC EDGAR for each company.
+Supports three modes:
+1. all-enabled: Fetch from all enabled companies in database
+2. predefined-50: Fetch from hardcoded list of 50 tech companies
+3. custom-list: Fetch from user-specified ticker list
+
+Can be configured for any number of 10-Q and 10-K filings per company.
 
 Usage:
-    python3 backfill_filings.py                    # Backfill all companies
-    python3 backfill_filings.py --ticker AAPL      # Backfill specific company
-    python3 backfill_filings.py --limit 20         # Fetch 20 most recent per company
-    python3 backfill_filings.py --dry-run           # Preview without saving
-
-Environment variables required:
-    DATABASE_URL: PostgreSQL connection string
-    AWS_REGION: AWS region (default: us-east-1)
-    AWS_ACCESS_KEY_ID: AWS access key (for S3 upload)
-    AWS_SECRET_ACCESS_KEY: AWS secret key (for S3 upload)
-    S3_BUCKET_FILINGS: S3 bucket name (default: 10kay-filings)
+    python3 backfill_filings.py --source all-enabled --num-10q 3 --num-10k 1
+    python3 backfill_filings.py --source predefined-50 --num-10q 4 --num-10k 2
+    python3 backfill_filings.py --source custom-list --tickers AAPL,GOOGL,MSFT --num-10q 3 --num-10k 1
 """
+
 import sys
+import os
 import argparse
-from typing import List, Optional
+from pathlib import Path
+from datetime import datetime
+
+# Add pipeline to path
+sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+
+from utils import get_config, setup_root_logger
+from fetchers import EdgarFetcher, FilingType
 import psycopg2
 
-from pipeline.utils import get_config, PipelineLogger, setup_root_logger
-from pipeline.fetchers import EdgarFetcher, FilingType
+
+# Predefined list of 50 tech companies for default backfill
+PREDEFINED_TICKERS = [
+    'NXPI', 'MCHP', 'AMAT', 'SNPS', 'NET', 'DDOG', 'FTNT', 'S', 'ENTG', 'ON',
+    'MPWR', 'ARM', 'SWKS', 'QRVO', 'SLAB', 'CFLT', 'PATH', 'DOCN', 'HUBS', 'BILL',
+    'AFRM', 'SOFI', 'COIN', 'HOOD', 'RBLX', 'TWLO', 'ESTC', 'DT', 'MNDY', 'ZUO',
+    'GTLB', 'RPD', 'TENB', 'CYBR', 'VEEV', 'APPF', 'PAYC', 'PCTY', 'ALKT', 'QLYS',
+    'FFIV', 'CHKP', 'GEN', 'CVLT', 'PSTG', 'NTAP', 'WIX', 'BIGC', 'LITE', 'COHR'
+]
 
 
-def get_enabled_companies(conn) -> List[dict]:
+def get_enabled_companies_from_db(conn):
     """Fetch list of enabled companies from database"""
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, ticker, name, metadata
-        FROM companies
-        WHERE enabled = true
-        ORDER BY ticker
-    """)
-
-    companies = []
-    for row in cursor.fetchall():
-        companies.append({
-            'id': row[0],
-            'ticker': row[1],
-            'name': row[2],
-            'metadata': row[3] or {}
-        })
-
-    cursor.close()
-    return companies
-
-
-def backfill_company(
-    fetcher: EdgarFetcher,
-    logger: PipelineLogger,
-    conn,
-    company: dict,
-    limit: int,
-    skip_existing: bool = True
-) -> int:
-    """
-    Backfill all available filings for a single company
-
-    Args:
-        fetcher: EdgarFetcher instance
-        logger: PipelineLogger instance
-        conn: Database connection
-        company: Company dict with id, ticker, name
-        limit: Maximum number of filings to fetch per company
-        skip_existing: Whether to skip filings already in database
-
-    Returns:
-        Number of new filings added
-    """
-    ticker = company['ticker']
-
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"Backfilling: {ticker} ({company['name']})")
-    logger.info(f"{'=' * 60}")
-
     try:
-        # Use process_company which handles the full workflow:
-        # fetch -> download -> upload to S3 -> save to database
-        count = fetcher.process_company(
-            ticker=ticker,
-            filing_type=None,  # Both 10-K and 10-Q
-            limit=limit,
-            skip_existing=skip_existing
-        )
-
-        logger.info(f"✓ Backfill complete for {ticker}: {count} new filings added")
-        return count
-
-    except Exception as e:
-        logger.error(f"✗ Failed to backfill {ticker}", exception=e)
-        return 0
+        cursor.execute("""
+            SELECT ticker
+            FROM companies
+            WHERE enabled = true
+            ORDER BY ticker
+        """)
+        tickers = [row[0] for row in cursor.fetchall()]
+        return tickers
+    finally:
+        cursor.close()
 
 
-def main():
-    """Main backfill orchestrator"""
+def parse_args():
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="Backfill all historical SEC filings for tracked companies"
+        description='Backfill multiple SEC filings per company',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Fetch from all enabled companies
+  python3 backfill_filings.py --source all-enabled --num-10q 3 --num-10k 1
+
+  # Fetch from predefined tech company list
+  python3 backfill_filings.py --source predefined-50 --num-10q 4 --num-10k 2
+
+  # Fetch from custom ticker list
+  python3 backfill_filings.py --source custom-list --tickers AAPL,GOOGL,MSFT --num-10q 3 --num-10k 1
+        """
     )
+
     parser.add_argument(
-        '--ticker',
+        '--source',
+        required=True,
+        choices=['all-enabled', 'predefined-50', 'custom-list'],
+        help='Source of companies to process'
+    )
+
+    parser.add_argument(
+        '--tickers',
         type=str,
-        help='Specific ticker to backfill (default: all enabled companies)'
+        help='Comma-separated ticker list (required if source=custom-list)'
     )
+
     parser.add_argument(
-        '--limit',
+        '--num-10q',
         type=int,
-        default=100,
-        help='Maximum filings to fetch per company (default: 100)'
+        default=3,
+        help='Number of 10-Q filings to fetch per company (default: 3)'
     )
+
     parser.add_argument(
-        '--skip-existing',
-        action='store_true',
-        default=True,
-        help='Skip filings that already exist in database (default: True)'
+        '--num-10k',
+        type=int,
+        default=1,
+        help='Number of 10-K filings to fetch per company (default: 1)'
     )
+
     parser.add_argument(
-        '--force',
-        action='store_true',
-        help='Fetch all filings even if they exist (WARNING: may create duplicates)'
-    )
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Preview what would be fetched without saving to database'
+        '--log-level',
+        default='INFO',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        help='Logging level (default: INFO)'
     )
 
     args = parser.parse_args()
 
-    # Setup logging
-    root_logger = setup_root_logger()
-    logger = PipelineLogger(root_logger, 'backfill')
+    # Validate arguments
+    if args.source == 'custom-list' and not args.tickers:
+        parser.error('--tickers is required when using --source custom-list')
 
-    # Load config
+    return args
+
+
+def get_tickers_to_process(conn, args):
+    """Get list of tickers based on source parameter"""
+    if args.source == 'all-enabled':
+        tickers = get_enabled_companies_from_db(conn)
+    elif args.source == 'predefined-50':
+        tickers = PREDEFINED_TICKERS
+    elif args.source == 'custom-list':
+        tickers = [t.strip().upper() for t in args.tickers.split(',')]
+    else:
+        raise ValueError(f"Unknown source: {args.source}")
+
+    return tickers
+
+
+def main():
+    args = parse_args()
     config = get_config()
 
-    if args.dry_run:
-        logger.warning("Running in DRY-RUN mode - no changes will be saved")
+    # Setup logging
+    logger = setup_root_logger(level=args.log_level)
 
-    # Connect to database
+    print("=" * 80)
+    print(f"SEC Filings Backfill - Started at {datetime.now().isoformat()}")
+    print("=" * 80)
+    print(f"Source: {args.source}")
+    print(f"10-Q per company: {args.num_10q}")
+    print(f"10-K per company: {args.num_10k}")
+    print()
+
     try:
         conn = psycopg2.connect(config.database.url)
-    except psycopg2.Error as e:
-        logger.error("Failed to connect to database", exception=e)
-        sys.exit(1)
+        logger.info("✓ Connected to database")
 
-    try:
-        # Get companies to process
-        if args.ticker:
-            companies = [c for c in get_enabled_companies(conn) if c['ticker'] == args.ticker]
-            if not companies:
-                logger.error(f"Company not found: {args.ticker}")
-                sys.exit(1)
-        else:
-            companies = get_enabled_companies(conn)
-
-        logger.info(f"Backfilling {len(companies)} companies (limit={args.limit} per company)")
+        # Get tickers to process
+        tickers = get_tickers_to_process(conn, args)
+        print(f"Companies to process: {len(tickers)}")
+        print(f"Total filings to fetch: {len(tickers) * (args.num_10q + args.num_10k)}")
+        print()
 
         # Initialize fetcher
-        fetcher = EdgarFetcher(config, conn, logger)
+        fetcher = EdgarFetcher(config, conn, logger=logger)
 
-        # Backfill each company
-        total_added = 0
-        for company in companies:
-            count = backfill_company(
-                fetcher=fetcher,
-                logger=logger,
-                conn=conn,
-                company=company,
-                limit=args.limit,
-                skip_existing=not args.force
-            )
-            total_added += count
+        # Statistics
+        total_10q = 0
+        total_10k = 0
+        total_skipped = 0
+        failed_tickers = []
 
-        logger.info(f"\n{'=' * 60}")
-        logger.info(f"BACKFILL COMPLETE")
-        logger.info(f"{'=' * 60}")
-        logger.info(f"Total new filings added: {total_added}")
+        # Process each ticker
+        for idx, ticker in enumerate(tickers, 1):
+            print(f"[{idx}/{len(tickers)}] Processing {ticker}...")
+
+            try:
+                # Fetch 10-Q filings
+                if args.num_10q > 0:
+                    count_10q = fetcher.process_company(
+                        ticker=ticker,
+                        filing_type=FilingType.FORM_10Q,
+                        limit=args.num_10q,
+                        skip_existing=True
+                    )
+                    total_10q += count_10q
+                    print(f"  ✓ 10-Q: {count_10q}/{args.num_10q} filings")
+                else:
+                    count_10q = 0
+                    print(f"  ⊘ 10-Q: skipped")
+
+                # Fetch 10-K filings
+                if args.num_10k > 0:
+                    count_10k = fetcher.process_company(
+                        ticker=ticker,
+                        filing_type=FilingType.FORM_10K,
+                        limit=args.num_10k,
+                        skip_existing=True
+                    )
+                    total_10k += count_10k
+                    print(f"  ✓ 10-K: {count_10k}/{args.num_10k} filings")
+                else:
+                    count_10k = 0
+                    print(f"  ⊘ 10-K: skipped")
+
+                total = count_10q + count_10k
+                requested = args.num_10q + args.num_10k
+                skipped = requested - total
+                if skipped > 0:
+                    total_skipped += skipped
+                    print(f"  → Total: {total}/{requested} filings ({skipped} already existed)")
+                else:
+                    print(f"  → Total: {total}/{requested} filings")
+                print()
+
+            except Exception as e:
+                error_msg = str(e)[:120]
+                print(f"  ✗ Error: {error_msg}")
+                logger.error(f"Failed to process {ticker}", exception=e)
+                failed_tickers.append(ticker)
+                print()
+
+        # Summary
+        print("=" * 80)
+        print(f"BACKFILL COMPLETE - Finished at {datetime.now().isoformat()}")
+        print("=" * 80)
+        print(f"Total 10-Q filings fetched: {total_10q}")
+        print(f"Total 10-K filings fetched: {total_10k}")
+        print(f"Total filings: {total_10q + total_10k}")
+        print(f"Already existing (skipped): {total_skipped}")
+        print(f"Failed tickers: {len(failed_tickers)}")
+
+        if failed_tickers:
+            print(f"\nFailed companies: {', '.join(failed_tickers)}")
+
+        print()
+        print("Next steps:")
+        print("  1. Analyze filings: python3 pipeline/main.py --phase analyze")
+        print("  2. Generate content: python3 pipeline/main.py --phase generate")
+        print("  3. Publish content: python3 pipeline/main.py --phase publish")
+
+        # Write summary file for GitHub Actions
+        summary_file = 'backfill_summary.txt'
+        with open(summary_file, 'w') as f:
+            f.write(f"**Backfill Summary**\n\n")
+            f.write(f"- **Source**: {args.source}\n")
+            f.write(f"- **Companies processed**: {len(tickers) - len(failed_tickers)}/{len(tickers)}\n")
+            f.write(f"- **10-Q filings fetched**: {total_10q}\n")
+            f.write(f"- **10-K filings fetched**: {total_10k}\n")
+            f.write(f"- **Total filings**: {total_10q + total_10k}\n")
+            f.write(f"- **Skipped (existing)**: {total_skipped}\n")
+            if failed_tickers:
+                f.write(f"- **Failed**: {len(failed_tickers)} ({', '.join(failed_tickers)})\n")
+        print(f"\n✓ Summary written to {summary_file}")
 
         conn.close()
 
-    except KeyboardInterrupt:
-        logger.warning("Backfill interrupted by user")
-        conn.close()
-        sys.exit(1)
     except Exception as e:
-        logger.error("Unexpected error during backfill", exception=e)
-        conn.close()
+        print(f"✗ Fatal error: {e}")
+        logger.error("Fatal error during backfill", exception=e)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
