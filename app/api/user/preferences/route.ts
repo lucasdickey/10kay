@@ -1,11 +1,11 @@
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 import {
   getUserPreferencesByClerkId,
   updateUserPreferences,
   createSubscriber,
-} from "@/lib/db-preferences";
-import { UpdateUserPreferences } from "@/lib/types";
+} from '@/lib/db-preferences';
+import { UpdateUserPreferences } from '@/lib/types';
 
 /**
  * GET /api/user/preferences
@@ -17,21 +17,39 @@ export async function GET() {
 
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized" },
+        { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const preferences = await getUserPreferencesByClerkId(userId);
+    let preferences = await getUserPreferencesByClerkId(userId);
 
+    // If user preferences don't exist, create them on the fly
+    // This handles cases where the webhook might be delayed
     if (!preferences) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "User not found. Please ensure your account is set up.",
-        },
-        { status: 404 }
+      const user = await currentUser();
+      if (!user) {
+        return NextResponse.json(
+          { success: false, error: 'User not found' },
+          { status: 404 }
+        );
+      }
+
+      const primaryEmail = user.email_addresses.find(
+        e => e.id === user.primary_email_address_id
       );
+
+      if (!primaryEmail) {
+        return NextResponse.json(
+          { success: false, error: 'Primary email not found for user' },
+          { status: 400 }
+        );
+      }
+
+      console.log(
+        `User preferences not found for ${userId}, creating new subscriber record.`
+      );
+      preferences = await createSubscriber(primaryEmail.email_address, userId);
     }
 
     return NextResponse.json({
@@ -39,9 +57,9 @@ export async function GET() {
       data: preferences,
     });
   } catch (error) {
-    console.error("Error fetching user preferences:", error);
+    console.error('Error fetching user preferences:', error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }
