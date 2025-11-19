@@ -117,11 +117,18 @@ def main():
         failed_count = 0
 
         try:
+            # Map format names to ContentFormat enums
+            format_map = {
+                'blog': ContentFormat.BLOG_POST_HTML,
+                'email': ContentFormat.EMAIL_HTML,
+                'social': ContentFormat.TWITTER_THREAD
+            }
+
             # This uses the generator's built-in parallelization
             results = generator.generate_batch(
                 limit=limit,
                 workers=args.workers,
-                formats=[ContentFormat[fmt.upper()] for fmt in args.formats]
+                formats=[format_map[fmt] for fmt in args.formats]
             )
             
             if results:
