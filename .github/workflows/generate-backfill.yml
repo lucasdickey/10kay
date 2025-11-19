@@ -55,6 +55,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY || 'demo_key_for_pipeline_config' }}
         run: |
           LIMIT_ARG=""
           if [ "${{ github.event.inputs.limit }}" != "0" ]; then

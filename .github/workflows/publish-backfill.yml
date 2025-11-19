@@ -55,6 +55,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
           FROM_NAME: ${{ secrets.FROM_NAME }}
+          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY || 'demo_key_for_pipeline_config' }}
         run: |
           LIMIT_ARG=""
           if [ "${{ github.event.inputs.limit }}" != "0" ]; then
