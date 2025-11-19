@@ -498,3 +498,104 @@ class EmailPublisher(BasePublisher):
         except Exception as e:
             self.db_connection.rollback()
             raise DatabaseError(f"Failed to save delivery record: {e}")
+
+    def count_ready_content(self) -> int:
+        """
+        Count the number of content items ready for publishing
+
+        Returns:
+            Number of content records with status='generated'
+
+        Raises:
+            DatabaseError: If database query fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM content WHERE status = 'generated'")
+            count = cursor.fetchone()[0]
+            cursor.close()
+            return count
+        except Exception as e:
+            raise DatabaseError(f"Failed to count ready content: {e}")
+
+    def get_ready_content(self, limit: Optional[int] = None, tier: str = 'all') -> List[Dict[str, Any]]:
+        """
+        Get content ready for publishing from database
+
+        Args:
+            limit: Maximum number of items to return (None = all)
+            tier: Subscriber tier to filter by ('all', 'free', 'paid')
+
+        Returns:
+            List of content dictionaries with keys: content_id, filing_id, ticker, filing_type
+
+        Raises:
+            DatabaseError: If database query fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        try:
+            cursor = self.db_connection.cursor()
+
+            query = """
+                SELECT c.id as content_id, f.id as filing_id, co.ticker, f.filing_type
+                FROM content c
+                JOIN filings f ON c.filing_id = f.id
+                JOIN companies co ON f.company_id = co.id
+                WHERE c.status = 'generated'
+                ORDER BY c.created_at DESC
+            """
+
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor.execute(query)
+            columns = ['content_id', 'filing_id', 'ticker', 'filing_type']
+            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            cursor.close()
+
+            return items
+        except Exception as e:
+            raise DatabaseError(f"Failed to get ready content: {e}")
+
+    def publish_batch(self, limit: Optional[int] = None, tier: str = 'all', dry_run: bool = False, workers: int = 1) -> Dict[str, int]:
+        """
+        Publish a batch of ready content
+
+        Args:
+            limit: Maximum number of items to publish (None = all ready)
+            tier: Subscriber tier ('all', 'free', 'paid')
+            dry_run: If True, validate without sending
+            workers: Number of parallel workers (currently not used, for future parallelization)
+
+        Returns:
+            Dictionary with keys 'published' and 'failed'
+
+        Raises:
+            DatabaseError: If database connection fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        items = self.get_ready_content(limit=limit, tier=tier)
+        published_count = 0
+        failed_count = 0
+
+        for idx, item in enumerate(items, 1):
+            try:
+                self.publish(item['content_id'], tier=tier, dry_run=dry_run)
+                published_count += 1
+                status = "validated" if dry_run else "published"
+                print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) {status} successfully")
+            except Exception as e:
+                failed_count += 1
+                error_msg = str(e)[:200]  # Truncate long errors
+                print(f"  [{idx}/{len(items)}] ✗ {item['ticker']} ({item['filing_type']}) - {error_msg}")
+                if self.logger:
+                    self.logger.error(f"Failed to publish {item['ticker']}: {e}")
+
+        return {'published': published_count, 'failed': failed_count}

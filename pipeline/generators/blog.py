@@ -928,3 +928,104 @@ class BlogGenerator(BaseGenerator):
         except Exception as e:
             self.db_connection.rollback()
             raise DatabaseError(f"Failed to save blog HTML: {e}")
+
+    def count_pending_generations(self) -> int:
+        """
+        Count the number of contents pending generation
+
+        Returns:
+            Number of content records with status='analyzed'
+
+        Raises:
+            DatabaseError: If database query fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM content WHERE status = 'analyzed'")
+            count = cursor.fetchone()[0]
+            cursor.close()
+            return count
+        except Exception as e:
+            raise DatabaseError(f"Failed to count pending generations: {e}")
+
+    def get_pending_generations(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get pending content generations from database
+
+        Args:
+            limit: Maximum number of items to return (None = all)
+
+        Returns:
+            List of content dictionaries with keys: content_id, filing_id, ticker, filing_type
+
+        Raises:
+            DatabaseError: If database query fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        try:
+            cursor = self.db_connection.cursor()
+
+            query = """
+                SELECT c.id as content_id, f.id as filing_id, co.ticker, f.filing_type
+                FROM content c
+                JOIN filings f ON c.filing_id = f.id
+                JOIN companies co ON f.company_id = co.id
+                WHERE c.status = 'analyzed'
+                ORDER BY c.created_at DESC
+            """
+
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor.execute(query)
+            columns = ['content_id', 'filing_id', 'ticker', 'filing_type']
+            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            cursor.close()
+
+            return items
+        except Exception as e:
+            raise DatabaseError(f"Failed to get pending generations: {e}")
+
+    def generate_batch(self, limit: Optional[int] = None, formats: List[str] = None, workers: int = 3) -> Dict[str, int]:
+        """
+        Generate content for a batch of pending items
+
+        Args:
+            limit: Maximum number of items to generate (None = all pending)
+            formats: List of formats to generate ('blog', 'email', etc.)
+            workers: Number of parallel workers (currently not used, for future parallelization)
+
+        Returns:
+            Dictionary with keys 'generated' and 'failed'
+
+        Raises:
+            DatabaseError: If database connection fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        if formats is None:
+            formats = ['blog', 'email']
+
+        items = self.get_pending_generations(limit=limit)
+        generated_count = 0
+        failed_count = 0
+
+        for idx, item in enumerate(items, 1):
+            try:
+                self.generate(item['content_id'], formats=formats)
+                generated_count += 1
+                print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) generated successfully")
+            except Exception as e:
+                failed_count += 1
+                error_msg = str(e)[:200]  # Truncate long errors
+                print(f"  [{idx}/{len(items)}] ✗ {item['ticker']} ({item['filing_type']}) - {error_msg}")
+                if self.logger:
+                    self.logger.error(f"Failed to generate {item['ticker']}: {e}")
+
+        return {'generated': generated_count, 'failed': failed_count}
