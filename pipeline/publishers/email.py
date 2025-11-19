@@ -514,7 +514,8 @@ class EmailPublisher(BasePublisher):
 
         try:
             cursor = self.db_connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM content WHERE status = 'generated'")
+            # Content is ready for publishing if it has email HTML and hasn't been published yet
+            cursor.execute("SELECT COUNT(*) FROM content WHERE email_html IS NOT NULL AND published_at IS NULL")
             count = cursor.fetchone()[0]
             cursor.close()
             return count
@@ -546,7 +547,7 @@ class EmailPublisher(BasePublisher):
                 FROM content c
                 JOIN filings f ON c.filing_id = f.id
                 JOIN companies co ON f.company_id = co.id
-                WHERE c.status = 'generated'
+                WHERE c.email_html IS NOT NULL AND c.published_at IS NULL
                 ORDER BY c.created_at DESC
             """
 

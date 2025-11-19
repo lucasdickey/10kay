@@ -944,7 +944,8 @@ class BlogGenerator(BaseGenerator):
 
         try:
             cursor = self.db_connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM content WHERE status = 'analyzed'")
+            # Content is pending generation if it has no HTML yet (blog_html or email_html is NULL)
+            cursor.execute("SELECT COUNT(*) FROM content WHERE blog_html IS NULL OR email_html IS NULL")
             count = cursor.fetchone()[0]
             cursor.close()
             return count
@@ -975,7 +976,7 @@ class BlogGenerator(BaseGenerator):
                 FROM content c
                 JOIN filings f ON c.filing_id = f.id
                 JOIN companies co ON f.company_id = co.id
-                WHERE c.status = 'analyzed'
+                WHERE c.blog_html IS NULL OR c.email_html IS NULL
                 ORDER BY c.created_at DESC
             """
 
