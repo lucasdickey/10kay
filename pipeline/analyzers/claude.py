@@ -893,12 +893,15 @@ Respond with only valid JSON, no additional text."""
         analyzed_count = 0
         failed_count = 0
 
-        for filing in filings:
+        for idx, filing in enumerate(filings, 1):
             try:
                 self.analyze_filing(filing['filing_id'])
                 analyzed_count += 1
+                print(f"  [{idx}/{len(filings)}] ✓ {filing['ticker']} ({filing['filing_type']}) analyzed successfully")
             except Exception as e:
                 failed_count += 1
+                error_msg = str(e)[:200]  # Truncate long errors
+                print(f"  [{idx}/{len(filings)}] ✗ {filing['ticker']} ({filing['filing_type']}) - {error_msg}")
                 if self.logger:
                     self.logger.error(f"Failed to analyze {filing['ticker']}: {e}")
 
