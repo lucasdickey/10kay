@@ -16,6 +16,7 @@ import sys
 import argparse
 from pathlib import Path
 from datetime import datetime
+import psycopg2
 
 # Add pipeline to path
 sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
@@ -90,7 +91,10 @@ def main():
     print()
 
     try:
-        generator = BlogGenerator(config)
+        # Create database connection
+        db_connection = psycopg2.connect(config.database.url)
+
+        generator = BlogGenerator(config, db_connection=db_connection)
 
         # Get pending generations
         pending_count = generator.count_pending_generations()
@@ -196,6 +200,13 @@ def main():
         import traceback
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        # Close database connection if it was created
+        if 'db_connection' in locals():
+            try:
+                db_connection.close()
+            except:
+                pass
 
 
 if __name__ == '__main__':

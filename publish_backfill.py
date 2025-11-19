@@ -17,6 +17,7 @@ import sys
 import argparse
 from pathlib import Path
 from datetime import datetime
+import psycopg2
 
 # Add pipeline to path
 sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
@@ -93,7 +94,10 @@ def main():
     print()
 
     try:
-        publisher = EmailPublisher(config)
+        # Create database connection
+        db_connection = psycopg2.connect(config.database.url)
+
+        publisher = EmailPublisher(config, db_connection=db_connection)
 
         # Get ready content
         ready_count = publisher.count_ready_content()
@@ -209,6 +213,13 @@ def main():
         import traceback
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        # Close database connection if it was created
+        if 'db_connection' in locals():
+            try:
+                db_connection.close()
+            except:
+                pass
 
 
 if __name__ == '__main__':
