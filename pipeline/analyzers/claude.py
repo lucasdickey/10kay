@@ -853,8 +853,9 @@ Respond with only valid JSON, no additional text."""
             cursor = self.db_connection.cursor()
 
             query = """
-                SELECT f.id as filing_id, f.ticker, f.filing_type, f.fiscal_date, f.fiscal_year, f.fiscal_quarter
+                SELECT f.id as filing_id, c.ticker, f.filing_type, f.fiscal_date, f.fiscal_year, f.fiscal_quarter
                 FROM filings f
+                JOIN companies c ON f.company_id = c.id
                 WHERE f.status = 'pending'
                 ORDER BY f.filed_date DESC
             """
