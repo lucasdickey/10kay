@@ -810,3 +810,25 @@ Respond with only valid JSON, no additional text."""
         except Exception as e:
             self.db_connection.rollback()
             raise DatabaseError(f"Failed to save analysis to database: {e}")
+
+    def count_pending_filings(self) -> int:
+        """
+        Count the number of filings pending analysis
+
+        Returns:
+            Number of filings with status='pending'
+
+        Raises:
+            DatabaseError: If database query fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM filings WHERE status = 'pending'")
+            count = cursor.fetchone()[0]
+            cursor.close()
+            return count
+        except Exception as e:
+            raise DatabaseError(f"Failed to count pending filings: {e}")
