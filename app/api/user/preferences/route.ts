@@ -35,8 +35,8 @@ export async function GET() {
         );
       }
 
-      const primaryEmail = user.email_addresses.find(
-        e => e.id === user.primary_email_address_id
+      const primaryEmail = user.emailAddresses.find(
+        e => e.id === user.primaryEmailAddressId
       );
 
       if (!primaryEmail) {
@@ -49,7 +49,7 @@ export async function GET() {
       console.log(
         `User preferences not found for ${userId}, creating new subscriber record.`
       );
-      preferences = await createSubscriber(primaryEmail.email_address, userId);
+      preferences = await createSubscriber(primaryEmail.emailAddress, userId);
     }
 
     return NextResponse.json({
