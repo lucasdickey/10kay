@@ -2,10 +2,12 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import {
   getUserPreferencesByClerkId,
+  getUserPreferencesByEmail,
   updateUserPreferences,
   createSubscriber,
 } from '@/lib/db-preferences';
 import { UpdateUserPreferences } from '@/lib/types';
+import { query } from '@/lib/db';
 
 /**
  * GET /api/user/preferences
@@ -24,8 +26,8 @@ export async function GET() {
 
     let preferences = await getUserPreferencesByClerkId(userId);
 
-    // If user preferences don't exist, create them on the fly
-    // This handles cases where the webhook might be delayed
+    // If user preferences don't exist, try to link existing subscriber or create new one
+    // This handles cases where the webhook might be delayed or subscriber exists without clerk_user_id
     if (!preferences) {
       const user = await currentUser();
       if (!user) {
@@ -46,10 +48,32 @@ export async function GET() {
         );
       }
 
-      console.log(
-        `User preferences not found for ${userId}, creating new subscriber record.`
-      );
-      preferences = await createSubscriber(primaryEmail.emailAddress, userId);
+      // Check if subscriber exists by email but without clerk_user_id
+      const existingSubscriber = await getUserPreferencesByEmail(primaryEmail.emailAddress);
+
+      if (existingSubscriber && !existingSubscriber.clerk_user_id) {
+        // Link existing subscriber to this Clerk user
+        console.log(
+          `Linking existing subscriber ${existingSubscriber.id} to Clerk user ${userId}`
+        );
+        await query(
+          `UPDATE subscribers SET clerk_user_id = $1, updated_at = NOW() WHERE id = $2`,
+          [userId, existingSubscriber.id]
+        );
+        preferences = await getUserPreferencesByClerkId(userId);
+      } else if (!existingSubscriber) {
+        // Create new subscriber
+        console.log(
+          `User preferences not found for ${userId}, creating new subscriber record.`
+        );
+        preferences = await createSubscriber(primaryEmail.emailAddress, userId);
+      } else {
+        // Subscriber exists with different clerk_user_id - this shouldn't happen
+        return NextResponse.json(
+          { success: false, error: 'Email already associated with different account' },
+          { status: 409 }
+        );
+      }
     }
 
     return NextResponse.json({
