@@ -50,7 +50,7 @@ jobs:
           S3_BUCKET_FILINGS: ${{ secrets.S3_BUCKET_FILINGS }}
           S3_BUCKET_AUDIO: ${{ secrets.S3_BUCKET_AUDIO }}
           CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
-          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY || 'demo_key_for_pipeline_config' }}
+          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY != '' && secrets.FINHUB_API_KEY || 'demo_key_for_pipeline_config' }}
         run: |
           PHASE="${{ github.event.inputs.phase || 'all' }}"
           echo "Running pipeline phase: $PHASE"

@@ -48,7 +48,7 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BEDROCK_MODEL_ID: ${{ secrets.AWS_BEDROCK_MODEL_ID }}
           CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
-          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY || 'demo_key_for_pipeline_config' }}
+          FINHUB_API_KEY: ${{ secrets.FINHUB_API_KEY != '' && secrets.FINHUB_API_KEY || 'demo_key_for_pipeline_config' }}
         run: |
           LIMIT_ARG=""
           if [ "${{ github.event.inputs.limit }}" != "0" ]; then
