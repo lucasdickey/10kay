@@ -16,6 +16,10 @@ import { WebhookEvent } from '@clerk/nextjs/server';
 import { createSubscriber, getUserPreferencesByClerkId } from '@/lib/db-preferences';
 import { query } from '@/lib/db';
 
+// Disable caching for this route
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
   // Get the Svix headers for verification
   const headerPayload = await headers();
