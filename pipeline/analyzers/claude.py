@@ -841,7 +841,7 @@ Respond with only valid JSON, no additional text."""
             limit: Maximum number of filings to return (None = all)
 
         Returns:
-            List of filing dictionaries with keys: filing_id, ticker, filing_type, fiscal_date
+            List of filing dictionaries with keys: filing_id, ticker, filing_type
 
         Raises:
             DatabaseError: If database query fails
@@ -853,18 +853,18 @@ Respond with only valid JSON, no additional text."""
             cursor = self.db_connection.cursor()
 
             query = """
-                SELECT f.id as filing_id, c.ticker, f.filing_type, f.fiscal_date, f.fiscal_year, f.fiscal_quarter
+                SELECT f.id as filing_id, c.ticker, f.filing_type
                 FROM filings f
                 JOIN companies c ON f.company_id = c.id
                 WHERE f.status = 'pending'
-                ORDER BY f.filed_date DESC
+                ORDER BY f.id DESC
             """
 
             if limit:
                 query += f" LIMIT {limit}"
 
             cursor.execute(query)
-            columns = ['filing_id', 'ticker', 'filing_type', 'fiscal_date', 'fiscal_year', 'fiscal_quarter']
+            columns = ['filing_id', 'ticker', 'filing_type']
             filings = [dict(zip(columns, row)) for row in cursor.fetchall()]
             cursor.close()
 
