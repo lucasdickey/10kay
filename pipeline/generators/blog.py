@@ -1019,7 +1019,10 @@ class BlogGenerator(BaseGenerator):
 
         for idx, item in enumerate(items, 1):
             try:
-                self.generate(item['content_id'], formats=formats)
+                # Generate each format for this content
+                for fmt in formats:
+                    self.generate(item['content_id'], format=fmt)
+
                 generated_count += 1
                 print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) generated successfully")
             except Exception as e:
