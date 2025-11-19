@@ -33,6 +33,13 @@ class ClaudeAnalyzer(BaseAnalyzer):
         """Initialize Claude analyzer with AWS Bedrock client"""
         super().__init__(config, db_connection, logger)
 
+        # Debug: Log AWS configuration (with redacted credentials)
+        print(f"DEBUG: AWS Region: {config.aws.region}")
+        print(f"DEBUG: S3 Filings Bucket: {config.aws.s3_filings_bucket}")
+        print(f"DEBUG: AWS Access Key ID: {'***' if config.aws.access_key_id else 'NOT SET'}")
+        print(f"DEBUG: AWS Secret Access Key: {'***' if config.aws.secret_access_key else 'NOT SET'}")
+        print(f"DEBUG: Bedrock Model ID: {config.aws.bedrock_model_id}")
+
         # Initialize Bedrock client
         self.bedrock_client = boto3.client(
             'bedrock-runtime',
