@@ -5,11 +5,20 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
-  '/api/webhooks/clerk(.*)', // Clerk webhook must be public
+]);
+
+// Webhook routes that should bypass Clerk entirely
+const isWebhookRoute = createRouteMatcher([
+  '/api/webhooks/clerk(.*)',
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
-  // Allow public routes without authentication
+  // Skip Clerk processing entirely for webhooks
+  if (isWebhookRoute(request)) {
+    return; // Let the request pass through without any Clerk processing
+  }
+
+  // Protect non-public routes
   if (!isPublicRoute(request)) {
     await auth.protect();
   }
