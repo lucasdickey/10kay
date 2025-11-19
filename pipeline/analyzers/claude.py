@@ -832,3 +832,73 @@ Respond with only valid JSON, no additional text."""
             return count
         except Exception as e:
             raise DatabaseError(f"Failed to count pending filings: {e}")
+
+    def get_pending_filings(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get pending filings from database
+
+        Args:
+            limit: Maximum number of filings to return (None = all)
+
+        Returns:
+            List of filing dictionaries with keys: filing_id, ticker, filing_type, fiscal_date
+
+        Raises:
+            DatabaseError: If database query fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        try:
+            cursor = self.db_connection.cursor()
+
+            query = """
+                SELECT f.id as filing_id, f.ticker, f.filing_type, f.fiscal_date, f.fiscal_year, f.fiscal_quarter
+                FROM filings f
+                WHERE f.status = 'pending'
+                ORDER BY f.filed_date DESC
+            """
+
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor.execute(query)
+            columns = ['filing_id', 'ticker', 'filing_type', 'fiscal_date', 'fiscal_year', 'fiscal_quarter']
+            filings = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            cursor.close()
+
+            return filings
+        except Exception as e:
+            raise DatabaseError(f"Failed to get pending filings: {e}")
+
+    def analyze_batch(self, limit: Optional[int] = None, workers: int = 3) -> Dict[str, int]:
+        """
+        Analyze a batch of pending filings
+
+        Args:
+            limit: Maximum number of filings to analyze (None = all pending)
+            workers: Number of parallel workers (currently not used, for future parallelization)
+
+        Returns:
+            Dictionary with keys 'analyzed' and 'failed'
+
+        Raises:
+            DatabaseError: If database connection fails
+        """
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        filings = self.get_pending_filings(limit=limit)
+        analyzed_count = 0
+        failed_count = 0
+
+        for filing in filings:
+            try:
+                self.analyze_filing(filing['filing_id'])
+                analyzed_count += 1
+            except Exception as e:
+                failed_count += 1
+                if self.logger:
+                    self.logger.error(f"Failed to analyze {filing['ticker']}: {e}")
+
+        return {'analyzed': analyzed_count, 'failed': failed_count}
