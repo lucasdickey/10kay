@@ -8,6 +8,10 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { query, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import { CompanyOverview } from '@/components/CompanyOverview';
+import { CompanyProducts } from '@/components/CompanyProducts';
+import { CompanyGeography } from '@/components/CompanyGeography';
+import { CompanyMetadata } from '@/lib/company-types';
 
 interface CompanyPageProps {
   params: Promise<{
@@ -19,6 +23,7 @@ interface CompanyWithAnalyses {
   ticker: string;
   name: string;
   domain?: string | null;
+  metadata?: CompanyMetadata | null;
   analyses: Analysis[];
 }
 
@@ -74,6 +79,7 @@ async function getCompanyAnalyses(ticker: string): Promise<CompanyWithAnalyses |
     ticker: company.ticker,
     name: company.name,
     domain: company.metadata?.domain,
+    metadata: company.metadata as CompanyMetadata,
     analyses
   };
 }
@@ -143,6 +149,17 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
 
       {/* Main Content */}
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-12">
+        {/* Company Information Components */}
+        <div className="space-y-6 mb-12">
+          <CompanyOverview
+            ticker={companyData.ticker}
+            name={companyData.name}
+            metadata={companyData.metadata}
+          />
+          <CompanyProducts products={companyData.metadata?.products} />
+          <CompanyGeography geography={companyData.metadata?.geography} />
+        </div>
+
         <h2 className="text-2xl font-bold text-gray-900 mb-8">
           SEC Filing Analyses ({companyData.analyses.length})
         </h2>
