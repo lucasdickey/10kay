@@ -79,9 +79,10 @@ class FinnhubConfig:
     @classmethod
     def from_env(cls) -> 'FinnhubConfig':
         """Load Finnhub config from environment variables"""
-        api_key = os.getenv('FINHUB_API_KEY')
-        if not api_key:
-            raise ValueError("FINHUB_API_KEY environment variable is required")
+        # Use demo key as fallback for pipeline phases that don't use Finnhub
+        # (fetch, analyze, generate, publish all work without it)
+        # Only earnings-calendar phase actually uses this API key
+        api_key = os.getenv('FINHUB_API_KEY', 'demo_key_for_pipeline_config')
         return cls(api_key=api_key)
 
 
