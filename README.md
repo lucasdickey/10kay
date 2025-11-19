@@ -254,8 +254,9 @@ See `pipeline/README.md` for detailed documentation.
 - Build semantic search API endpoints
 - Enable cross-company comparisons and RAG chatbot functionality
 
-### Phase 3: User Accounts & Email (Pending)
+### Phase 3: User Accounts & Email (Active)
 - Clerk authentication integration
+- Signup with email and password OR Google
 - Subscriber management UI
 - Email newsletter delivery via Resend
 - Subscription preference management
