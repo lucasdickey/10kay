@@ -587,7 +587,19 @@ class EmailPublisher(BasePublisher):
 
         for idx, item in enumerate(items, 1):
             try:
-                self.publish(item['content_id'], tier=tier, dry_run=dry_run)
+                # Build audience filter based on tier
+                audience_filter = None
+                if tier != 'all':
+                    audience_filter = {'tier': tier}
+
+                # Publish to EMAIL_NEWSLETTER channel
+                result = self.publish(
+                    item['content_id'],
+                    channel=PublishChannel.EMAIL_NEWSLETTER,
+                    audience_filter=audience_filter,
+                    dry_run=dry_run
+                )
+
                 published_count += 1
                 status = "validated" if dry_run else "published"
                 print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) {status} successfully")
