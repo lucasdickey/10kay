@@ -1011,7 +1011,13 @@ class BlogGenerator(BaseGenerator):
             raise DatabaseError("No database connection available")
 
         if formats is None:
-            formats = ['blog', 'email']
+            formats = [ContentFormat.BLOG_POST_HTML]
+
+        # Filter to only supported formats (currently only BLOG_POST_HTML is implemented)
+        supported_formats = [fmt for fmt in formats if fmt == ContentFormat.BLOG_POST_HTML]
+        if not supported_formats:
+            print("Warning: No supported formats requested. Will generate BLOG_POST_HTML by default.")
+            supported_formats = [ContentFormat.BLOG_POST_HTML]
 
         items = self.get_pending_generations(limit=limit)
         generated_count = 0
@@ -1020,7 +1026,7 @@ class BlogGenerator(BaseGenerator):
         for idx, item in enumerate(items, 1):
             try:
                 # Generate each format for this content
-                for fmt in formats:
+                for fmt in supported_formats:
                     self.generate(item['content_id'], format=fmt)
 
                 generated_count += 1
