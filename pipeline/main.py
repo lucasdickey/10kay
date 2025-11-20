@@ -18,6 +18,7 @@ import psycopg2
 from utils import get_config, PipelineLogger, setup_root_logger
 from fetchers import EdgarFetcher, FilingType
 from fetchers.earnings_calendar import EarningsCalendarFetcher
+from fetchers.market_data import MarketDataFetcher
 from analyzers import ClaudeAnalyzer, AnalysisType
 from generators import BlogGenerator, ContentFormat
 from publishers import EmailPublisher, PublishChannel
@@ -136,6 +137,46 @@ def earnings_calendar_phase(conn, logger, config, tickers: Optional[List[str]] =
 
     except Exception as e:
         logger.error("✗ Failed to fetch earnings calendar", exception=e)
+        return 0
+
+
+def market_data_phase(conn, logger, config, tickers: Optional[List[str]] = None):
+    """
+    Fetch market data (stock prices, market cap) from Finnhub API
+
+    This should be run weekly to update market capitalization and daily stock prices
+    for 7-day performance tracking.
+
+    Args:
+        conn: Database connection
+        logger: PipelineLogger
+        config: PipelineConfig
+        tickers: Optional list of specific tickers to fetch
+    """
+    logger.info("=" * 60)
+    logger.info("MARKET DATA: Fetching Stock Prices & Market Cap")
+    logger.info("=" * 60)
+
+    # Initialize market data fetcher
+    fetcher = MarketDataFetcher(config, conn, logger)
+
+    # Get tickers if not provided
+    if not tickers:
+        companies = get_enabled_companies(conn)
+        tickers = [c['ticker'] for c in companies]
+
+    logger.info(f"Fetching market data for {len(tickers)} companies")
+
+    try:
+        # Fetch and save market data
+        count = fetcher.fetch_and_save_market_data(tickers)
+
+        logger.info(f"✓ Saved market data for {count} companies")
+        logger.info("Market data fetch complete")
+        return count
+
+    except Exception as e:
+        logger.error("✗ Failed to fetch market data", exception=e)
         return 0
 
 
@@ -333,7 +374,7 @@ def main():
     parser = argparse.ArgumentParser(description='10KAY Pipeline Orchestrator')
     parser.add_argument(
         '--phase',
-        choices=['fetch', 'earnings-calendar', 'analyze', 'generate', 'publish', 'all'],
+        choices=['fetch', 'earnings-calendar', 'market-data', 'analyze', 'generate', 'publish', 'all'],
         default='all',
         help='Pipeline phase to run'
     )
@@ -380,6 +421,9 @@ def main():
 
         if args.phase in ['earnings-calendar']:
             earnings_calendar_phase(conn, logger, config, args.tickers)
+
+        if args.phase in ['market-data']:
+            market_data_phase(conn, logger, config, args.tickers)
 
         if args.phase in ['analyze', 'all']:
             analyze_phase(conn, logger, config)

@@ -11,7 +11,9 @@ import { CompanyLogo } from '@/lib/company-logo';
 import { CompanyOverview } from '@/components/CompanyOverview';
 import { CompanyProducts } from '@/components/CompanyProducts';
 import { CompanyGeography } from '@/components/CompanyGeography';
+import { CompanyPerformanceMetrics } from '@/components/CompanyPerformanceMetrics';
 import { CompanyMetadata } from '@/lib/company-types';
+import { getCompany7DayPerformance, getAggregate7DayPerformance, getSector7DayPerformance } from '@/lib/performance';
 
 interface CompanyPageProps {
   params: Promise<{
@@ -132,6 +134,13 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
     notFound();
   }
 
+  // Fetch performance metrics
+  const [performance, aggregateChange, sectorChange] = await Promise.all([
+    getCompany7DayPerformance(companyData.ticker),
+    getAggregate7DayPerformance(),
+    companyData.metadata?.sector ? getSector7DayPerformance(companyData.metadata.sector) : Promise.resolve(null),
+  ]);
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -155,6 +164,13 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             ticker={companyData.ticker}
             name={companyData.name}
             metadata={companyData.metadata}
+          />
+          <CompanyPerformanceMetrics
+            ticker={companyData.ticker}
+            priceChange7d={performance.priceChange7d}
+            aggregateChange7d={aggregateChange}
+            sectorChange7d={sectorChange}
+            sector={companyData.metadata?.sector || null}
           />
           <CompanyProducts products={companyData.metadata?.products} />
           <CompanyGeography geography={companyData.metadata?.geography} />
