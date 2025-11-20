@@ -70,7 +70,8 @@ class BlogGenerator(BaseGenerator):
                     f.fiscal_year,
                     f.fiscal_quarter,
                     f.filing_date,
-                    co.name as company_name
+                    co.name as company_name,
+                    (SELECT json_agg(pr.*) FROM press_releases pr WHERE pr.filing_id = f.id) as press_releases
                 FROM content c
                 JOIN filings f ON c.filing_id = f.id
                 JOIN companies co ON f.company_id = co.id
@@ -110,7 +111,8 @@ class BlogGenerator(BaseGenerator):
                 'fiscal_year': row[9],
                 'fiscal_period': fiscal_period,
                 'filing_date': row[11],
-                'company_name': row[12]
+                'company_name': row[12],
+                'press_releases': row[13] or []
             }
 
         except Exception as e:
@@ -264,6 +266,9 @@ class BlogGenerator(BaseGenerator):
 
         <!-- Risks & Opportunities -->
         {self._render_risks_opportunities(content.get('risk_factors', []), content.get('opportunities', []))}
+
+        <!-- Press Releases -->
+        {self._render_press_releases(content.get('press_releases', []))}
 
         <!-- Conclusion -->
         <div class="conclusion">
@@ -883,6 +888,24 @@ class BlogGenerator(BaseGenerator):
         paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
 
         return '\n'.join(f'<p>{p}</p>' for p in paragraphs)
+
+    def _render_press_releases(self, press_releases: List[Dict[str, str]]) -> str:
+        """Render press releases section"""
+        if not press_releases:
+            return ''
+
+        items = []
+        for pr in press_releases:
+            items.append(f'<li><a href="{pr["url"]}" target="_blank" rel="noopener noreferrer">{pr["title"]}</a></li>')
+
+        return f"""
+        <div class="press-releases">
+            <h2>Related Press Releases</h2>
+            <ul>
+                {''.join(items)}
+            </ul>
+        </div>
+        """
 
     def save_to_database(
         self,

@@ -5,6 +5,7 @@ botocore>=1.34.0       # AWS core library
 # HTTP and Web
 requests>=2.31.0       # HTTP client for SEC EDGAR
 httpx>=0.25.0          # Modern HTTP client (alternative)
+googlesearch-python>=1.2.3
 
 # Data Processing
 pydantic>=2.5.0        # Data validation
