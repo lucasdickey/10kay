@@ -1,5 +1,7 @@
 # 10kay Project Architecture & Context
 
+**⚠️ SCHEMA REFERENCE**: For complete and up-to-date database schema definitions, JSON structures, Python dataclasses, and common queries, see **[SCHEMA.md](./SCHEMA.md)**. This document provides a single source of truth for all schema definitions across code, database, and data layers.
+
 ## Deployment
 
 **Platform:** Vercel
