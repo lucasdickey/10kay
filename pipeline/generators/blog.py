@@ -1027,7 +1027,9 @@ class BlogGenerator(BaseGenerator):
             try:
                 # Generate each format for this content
                 for fmt in supported_formats:
-                    self.generate(item['content_id'], format=fmt)
+                    generated_content = self.generate(item['content_id'], format=fmt)
+                    # Save the generated content to the database
+                    self.save_generated_content(item['content_id'], generated_content)
 
                 generated_count += 1
                 print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) generated successfully")
