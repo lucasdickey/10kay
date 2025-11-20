@@ -1,487 +1,221 @@
-# 10KAY Database Schema Documentation
+# 10KAY Database & Data Schema Documentation
 
-**Last Updated:** 2025-11-08
-**Database:** PostgreSQL 15 on AWS RDS
-**Connection:** `tenkay-db.c41o8ksoi5bt.us-east-1.rds.amazonaws.com`
+This document consolidates all schema definitions (database tables, JSON structures, and code models) for agent reference and consistency.
 
----
+## Core Tables
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Schema vs Code Mapping](#schema-vs-code-mapping)
-3. [Table Definitions](#table-definitions)
-4. [JSONB Structures](#jsonb-structures)
-5. [Foreign Key Relationships](#foreign-key-relationships)
-6. [Known Issues & Migration Path](#known-issues--migration-path)
+### `companies` Table
+**Purpose**: Company master data linked to SEC filings
 
----
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `ticker` | VARCHAR(10) | Stock ticker symbol (unique) |
+| `name` | TEXT | Company legal name |
+| `exchange` | VARCHAR(10) | Stock exchange (NYSE, NASDAQ, etc.) |
+| `sector` | TEXT | Industry sector classification |
+| `enabled` | BOOLEAN | Whether to include in pipeline runs |
+| `added_at` | TIMESTAMPTZ | When record created |
+| `metadata` | JSONB | Additional company data |
 
-## Overview
+### `filings` Table
+**Purpose**: SEC filing records (10-K, 10-Q) with processing status
 
-The 10KAY database has **7 core tables** (+ 2 planned for Phase 2.5) organized around a filing analysis pipeline:
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `company_id` | UUID | Foreign key to companies |
+| `ticker` | VARCHAR(10) | Denormalized ticker for convenience |
+| `filing_type` | VARCHAR(10) | "10-K" or "10-Q" |
+| `fiscal_year` | INTEGER | Fiscal year of filing |
+| `fiscal_quarter` | INTEGER | Quarter (1-4) for 10-Q, null for 10-K |
+| `fiscal_date` | DATE | Fiscal period end date |
+| `filed_date` | DATE | SEC submission date |
+| `raw_document_url` | TEXT | S3 path to original filing |
+| `status` | VARCHAR(20) | Pipeline status: pending → analyzed → generated → published |
+| `created_at` | TIMESTAMPTZ | Record creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
 
-```
-companies (47 tech companies)
-    ↓
-filings (SEC 10-K/10-Q documents)
-    ↓
-    ├── document_embeddings (vector search - Phase 2.5)
-    └── content (AI-generated analysis)
-            ↓
-            ├── analysis_embeddings (vector search - Phase 2.5)
-            └── email_deliveries (sent to subscribers)
-```
+### `content` Table
+**Purpose**: Analyzed and formatted content for each filing
 
-**Critical Schema Mismatch:**
-- Database schema is **product-oriented** (executive_summary, tweet_draft, email_subject)
-- Pipeline code expects **analysis-oriented** fields (tldr_headline, deep_sections, ai_metadata)
-- Current workaround: Map analysis data to product fields + store metadata in JSONB
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key (content record ID) |
+| `filing_id` | UUID | FK to filings |
+| `company_id` | UUID | FK to companies |
+| `version` | INTEGER | Content version number |
+| `is_current` | BOOLEAN | Whether this is the latest version |
+| `slug` | VARCHAR | URL slug (unique): "nvda/2025/q3/10-q" |
+| `executive_summary` | TEXT | TLDR summary (2-3 sentences) |
+| `key_takeaways` | JSONB | Structured analysis metadata |
+| `deep_dive_opportunities` | TEXT | Opportunities section |
+| `deep_dive_risks` | TEXT | Risk factors section |
+| `deep_dive_strategy` | TEXT | Strategy section |
+| `implications` | TEXT | Strategic implications |
+| `blog_html` | TEXT | Formatted HTML for blog post |
+| `email_html` | TEXT | Email newsletter HTML |
+| `published_at` | TIMESTAMPTZ | When published to subscribers |
+| `created_at` | TIMESTAMPTZ | When analysis created |
+| `updated_at` | TIMESTAMPTZ | When last updated |
 
----
-
-## Schema vs Code Mapping
-
-### How AnalysisResult Maps to content Table
-
-| AnalysisResult Field | Actual Column | Storage Method |
-|---------------------|---------------|----------------|
-| `tldr_headline` | `key_takeaways` | JSONB: `{headline: "..."}` |
-| `tldr_summary` | `executive_summary` | First 500 chars |
-| `tldr_key_points` | `key_takeaways` | JSONB: `{points: [...]}` |
-| `deep_headline` | `key_takeaways` | JSONB: `{headline: "..."}` |
-| `deep_intro` | `executive_summary` | Full text |
-| `deep_sections` | `deep_dive_strategy` | Markdown formatted text |
-| `deep_conclusion` | `implications` | Direct mapping |
-| `opportunities` | `deep_dive_opportunities` | Newline separated |
-| `risk_factors` | `deep_dive_risks` | Newline separated |
-| `sentiment_score` | `key_takeaways` | JSONB: `{sentiment: 0.7}` |
-| `key_metrics` | `key_takeaways` | JSONB: `{metrics: {...}}` |
-| `model_version` | `key_takeaways` | JSONB: `{model: "..."}` |
-| `prompt_tokens` | `key_takeaways` | JSONB: `{tokens: 1234}` |
-| `completion_tokens` | `key_takeaways` | (included in tokens sum) |
-| `analysis_duration_seconds` | `key_takeaways` | JSONB: `{duration: 25.3}` |
-
-**Workaround Complexity:** 🔴 HIGH - Requires constant mapping layer
-
----
-
-## Table Definitions
-
-### 1. companies
-Tech companies being tracked (47 currently)
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `ticker` | VARCHAR | NOT NULL | - | Stock ticker (UNIQUE) |
-| `name` | TEXT | NOT NULL | - | Company name |
-| `exchange` | VARCHAR | NULL | - | NASDAQ, NYSE, etc |
-| `sector` | TEXT | NULL | - | Technology sector |
-| `enabled` | BOOLEAN | NULL | true | Active tracking flag |
-| `added_at` | TIMESTAMPTZ | NULL | now() | When added to system |
-| `metadata` | JSONB | NULL | - | Additional company data |
-
-**Indexes:**
-- PRIMARY KEY on `id`
-- UNIQUE on `ticker`
-
----
-
-### 2. filings
-SEC filing documents (10-K, 10-Q)
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `company_id` | UUID | NULL | - | FK to companies.id |
-| `filing_type` | VARCHAR | NOT NULL | - | "10-K" or "10-Q" |
-| `accession_number` | VARCHAR | NOT NULL | - | SEC accession # (UNIQUE) |
-| `filing_date` | DATE | NOT NULL | - | Official filing date |
-| `period_end_date` | DATE | NULL | - | Financial period end |
-| `fiscal_year` | INTEGER | NULL | - | Fiscal year (2025, etc) |
-| `fiscal_quarter` | INTEGER | NULL | - | 1-4 for 10-Q, NULL for 10-K |
-| `edgar_url` | TEXT | NOT NULL | - | SEC EDGAR page URL |
-| `raw_document_url` | TEXT | NULL | - | S3 URL to downloaded HTML |
-| `status` | VARCHAR | NULL | 'pending' | pending → analyzed |
-| `processed_at` | TIMESTAMPTZ | NULL | - | When analysis completed |
-| `error_message` | TEXT | NULL | - | Error if processing failed |
-| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
-| `updated_at` | TIMESTAMPTZ | NULL | now() | Last update |
-
-**Foreign Keys:**
-- `company_id` → `companies.id`
-
-**Indexes:**
-- PRIMARY KEY on `id`
-- UNIQUE on `accession_number`
-
-**Status Flow:** `pending` → `analyzed`
-
----
-
-### 3. content
-AI-generated analysis and content
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `filing_id` | UUID | NULL | - | FK to filings.id |
-| `company_id` | UUID | NULL | - | FK to companies.id |
-| `version` | INTEGER | NULL | 1 | Content version |
-| `is_current` | BOOLEAN | NULL | true | Current version flag |
-| `executive_summary` | TEXT | NOT NULL | - | **TLDR intro + deep intro** |
-| `key_takeaways` | JSONB | NOT NULL | - | **AI metadata + metrics** |
-| `deep_dive_opportunities` | TEXT | NULL | - | **Newline-separated opportunities** |
-| `deep_dive_risks` | TEXT | NULL | - | **Newline-separated risks** |
-| `deep_dive_strategy` | TEXT | NULL | - | **Markdown formatted sections** |
-| `implications` | TEXT | NULL | - | **Deep conclusion** |
-| `tweet_draft` | TEXT | NULL | - | (Unused - future feature) |
-| `email_subject` | TEXT | NULL | - | (Unused - future feature) |
-| `email_preview` | TEXT | NULL | - | (Unused - future feature) |
-| `audio_script` | TEXT | NULL | - | (Phase 5 - audio generation) |
-| `audio_url` | TEXT | NULL | - | (Phase 5 - ElevenLabs) |
-| `audio_duration_seconds` | INTEGER | NULL | - | (Phase 5) |
-| `published_at` | TIMESTAMPTZ | NULL | - | Publication timestamp |
-| `slug` | VARCHAR | NULL | - | URL slug (UNIQUE) |
-| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
-| `updated_at` | TIMESTAMPTZ | NULL | now() | Last update |
-| `created_by` | VARCHAR | NULL | 'ai' | Creator identifier |
-| `meta_description` | TEXT | NULL | - | SEO meta description |
-| `meta_keywords` | ARRAY | NULL | - | SEO keywords |
-| `blog_html` | TEXT | NULL | - | **Generated blog post HTML** |
-| `email_html` | TEXT | NULL | - | **Generated email HTML** |
-
-**Foreign Keys:**
-- `filing_id` → `filings.id`
-- `company_id` → `companies.id`
-
-**Indexes:**
-- PRIMARY KEY on `id`
-- UNIQUE on `slug`
-- INDEX on `published_at` WHERE published_at IS NOT NULL
-
-**Notes:**
-- No `status` column - use `published_at IS NOT NULL` to check if published
-- AI analysis metadata stored in `key_takeaways` JSONB (see below)
-
----
-
-### 4. subscribers
-Newsletter subscribers
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `email` | VARCHAR | NOT NULL | - | Email address (UNIQUE) |
-| `clerk_user_id` | VARCHAR | NULL | - | Clerk Auth ID |
-| `subscription_tier` | VARCHAR | NULL | 'free' | free / paid |
-| `stripe_customer_id` | VARCHAR | NULL | - | Stripe customer ID |
-| `stripe_subscription_id` | VARCHAR | NULL | - | Stripe subscription ID |
-| `subscription_status` | VARCHAR | NULL | - | active / canceled / past_due |
-| `email_frequency` | VARCHAR | NULL | 'daily' | daily / weekly / instant |
-| `interested_companies` | ARRAY | NULL | - | Array of tickers |
-| `subscribed_at` | TIMESTAMPTZ | NULL | now() | Subscription date |
-| `unsubscribed_at` | TIMESTAMPTZ | NULL | - | Unsubscribe date |
-| `last_email_sent_at` | TIMESTAMPTZ | NULL | - | Last email timestamp |
-| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
-| `updated_at` | TIMESTAMPTZ | NULL | now() | Last update |
-
-**Indexes:**
-- PRIMARY KEY on `id`
-- UNIQUE on `email`
-
----
-
-### 5. email_deliveries
-Email delivery tracking
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `subscriber_id` | UUID | NULL | - | FK to subscribers.id |
-| `content_id` | UUID | NULL | - | FK to content.id |
-| `sent_at` | TIMESTAMPTZ | NULL | now() | Sent timestamp |
-| `resend_email_id` | VARCHAR | NULL | - | Resend API email ID |
-| `opened_at` | TIMESTAMPTZ | NULL | - | Email opened timestamp |
-| `clicked_at` | TIMESTAMPTZ | NULL | - | Link clicked timestamp |
-| `status` | VARCHAR | NULL | 'sent' | sent / delivered / bounced |
-
-**Foreign Keys:**
-- `subscriber_id` → `subscribers.id`
-- `content_id` → `content.id`
-
----
-
-### 6. processing_logs
-Pipeline execution logs
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `filing_id` | UUID | NULL | - | FK to filings.id (nullable for general logs) |
-| `step` | VARCHAR | NOT NULL | - | fetch / analyze / generate / publish |
-| `status` | VARCHAR | NULL | - | success / error / in_progress (nullable) |
-| `message` | TEXT | NULL | - | Log message |
-| `metadata` | JSONB | NULL | - | Additional context |
-| `created_at` | TIMESTAMPTZ | NULL | now() | Log timestamp |
-| `level` | VARCHAR | NULL | - | debug / info / warning / error / critical |
-
-**Foreign Keys:**
-- `filing_id` → `filings.id`
-
----
-
-### 7. schema_migrations
-Migration tracking
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | INTEGER | NOT NULL | nextval() | Primary key |
-| `migration_name` | VARCHAR | NOT NULL | - | Migration filename |
-| `applied_at` | TIMESTAMPTZ | NULL | now() | Application timestamp |
-
----
-
-### 8. document_embeddings (Planned - Phase 2.5)
-Vector embeddings for raw SEC filing content (chunked)
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `filing_id` | UUID | NULL | - | FK to filings.id |
-| `company_id` | UUID | NULL | - | FK to companies.id |
-| `chunk_index` | INTEGER | NOT NULL | - | Position in document (0, 1, 2...) |
-| `content_text` | TEXT | NOT NULL | - | Original text chunk |
-| `token_count` | INTEGER | NULL | - | Tokens in this chunk |
-| `embedding` | VECTOR(1024) | NULL | - | Embedding vector (pgvector) |
-| `section_type` | VARCHAR | NULL | - | 'business_overview', 'risk_factors', etc. |
-| `page_number` | INTEGER | NULL | - | Approximate page in original PDF |
-| `embedding_model` | VARCHAR | NULL | 'amazon.titan-embed-text-v2:0' | Embedding model used |
-| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
-
-**Foreign Keys:**
-- `filing_id` → `filings.id`
-- `company_id` → `companies.id`
-
-**Indexes:**
-- PRIMARY KEY on `id`
-- INDEX on `filing_id`
-- INDEX on `company_id`
-- IVFFLAT INDEX on `embedding` using cosine distance
-
-**Use Cases:**
-- Semantic search across raw filing content
-- RAG (Retrieval Augmented Generation) for chatbot
-- Find similar filing sections across companies
-
----
-
-### 9. analysis_embeddings (Planned - Phase 2.5)
-Vector embeddings for AI-generated analysis sections
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| `id` | UUID | NOT NULL | gen_random_uuid() | Primary key |
-| `content_id` | UUID | NULL | - | FK to content.id |
-| `company_id` | UUID | NULL | - | FK to companies.id |
-| `filing_id` | UUID | NULL | - | FK to filings.id |
-| `section_name` | VARCHAR | NOT NULL | - | 'executive_summary', 'opportunities', etc. |
-| `content_text` | TEXT | NOT NULL | - | The actual analysis text |
-| `token_count` | INTEGER | NULL | - | Tokens in this section |
-| `embedding` | VECTOR(1024) | NULL | - | Embedding vector (pgvector) |
-| `filing_type` | VARCHAR | NULL | - | '10-K' or '10-Q' |
-| `fiscal_year` | INTEGER | NULL | - | Fiscal year for filtering |
-| `fiscal_quarter` | INTEGER | NULL | - | Fiscal quarter for filtering |
-| `ticker` | VARCHAR | NULL | - | Denormalized ticker for easy querying |
-| `embedding_model` | VARCHAR | NULL | 'amazon.titan-embed-text-v2:0' | Embedding model used |
-| `created_at` | TIMESTAMPTZ | NULL | now() | Record creation |
-
-**Foreign Keys:**
-- `content_id` → `content.id`
-- `company_id` → `companies.id`
-- `filing_id` → `filings.id`
-
-**Indexes:**
-- PRIMARY KEY on `id`
-- INDEX on `content_id`
-- INDEX on `company_id`
-- INDEX on `section_name`
-- INDEX on `ticker`
-- IVFFLAT INDEX on `embedding` using cosine distance
-
-**Use Cases:**
-- Find companies with similar strategic profiles
-- Cross-company theme analysis
-- Compare risk factors, opportunities across companies
-- Semantic search within analyzed content
-
----
-
-## JSONB Structures
-
-### content.key_takeaways
-
-Stores AI analysis metadata and metrics:
-
+### key_takeaways JSONB Structure
 ```json
 {
-  "headline": "Apple's Services Growth Offsets Hardware Slowdown",
-  "points": [
-    "Financial Performance Overview",
-    "Services Transformation",
-    "Product Innovation Pipeline"
-  ],
-  "sentiment": 0.7,
+  "headline": "NVIDIA's Data Center Dominance Drives 62% Revenue Growth",
+  "points": ["Point 1", "Point 2", "Point 3"],
   "metrics": {
-    "revenue": "$397.3B (+4.2% YoY)",
-    "margins": "Gross: 43.8% (+180bps), Operating: 30.4% (+90bps)",
-    "growth_indicators": {
-      "services_revenue": "$95.4B (+17.8%)",
-      "r&d_spend": "$29.8B (+14.3%)",
-      "paid_subscriptions": "950M (+125M YoY)"
-    }
+    "revenue": "$57.0B (+62% YoY, +34% QoQ) with Data Center driving growth",
+    "net_income": "$31.9B (+65% YoY) with 56% margin",
+    "rd_spend": "$4.7B (+39% YoY) at 8.3% of revenue",
+    "gross_margin": "73.4% (+180bps YoY) on mix and pricing",
+    "operating_margin": "63.2% (+890bps YoY) showing leverage"
   },
+  "sentiment": 0.8,
+  "bull_case": "Dominant AI infrastructure position with expanding margins",
+  "bear_case": "Data center constraints may delay customer deployments",
   "model": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-  "tokens": 1626,
-  "duration": 25.92
+  "tokens": 7104,
+  "duration": 3.45
 }
 ```
 
-### companies.metadata
+### `subscribers` Table
+**Purpose**: Email newsletter subscriber list
 
-Additional company data:
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `email` | VARCHAR | Email address (unique) |
+| `first_name` | VARCHAR | Subscriber first name |
+| `subscription_tier` | VARCHAR | "free" or "paid" |
+| `enabled` | BOOLEAN | Whether subscribed |
+| `topics_subscribed` | JSONB | Array of tickers subscribed to |
+| `created_at` | TIMESTAMPTZ | Subscription date |
 
-```json
-{
-  "founded": "1976",
-  "employees": 161000,
-  "market_cap": "3.5T",
-  "ceo": "Tim Cook"
-}
-```
+### `email_deliveries` Table
+**Purpose**: Track email sends via Resend API
 
----
-
-## Foreign Key Relationships
-
-```
-companies (1)
-    ↓
-    ├── filings (*) via company_id
-    │       ↓
-    │       ├── content (1) via filing_id
-    │       │       ↓
-    │       │       ├── email_deliveries (*) via content_id
-    │       │       └── analysis_embeddings (*) via content_id
-    │       │
-    │       ├── processing_logs (*) via filing_id
-    │       └── document_embeddings (*) via filing_id
-    │
-    ├── content (*) via company_id
-    ├── document_embeddings (*) via company_id
-    └── analysis_embeddings (*) via company_id
-
-subscribers (1)
-    ↓
-    └── email_deliveries (*) via subscriber_id
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `content_id` | UUID | FK to content sent |
+| `subscriber_id` | UUID | FK to subscriber |
+| `status` | VARCHAR | "sent", "bounced", "complained" |
+| `sent_at` | TIMESTAMPTZ | When sent |
+| `resend_email_id` | VARCHAR | Resend API message ID |
+| `metadata` | JSONB | Additional delivery data |
 
 ---
 
-## Known Issues & Migration Path
+## Code Data Structures
 
-### Issue #1: Analysis vs Product Field Mismatch
+### AnalysisResult Dataclass
+**File**: `pipeline/analyzers/base.py`
 
-**Problem:** Code expects analysis fields (tldr_headline, deep_sections) but database has product fields (executive_summary, tweet_draft).
-
-**Current Workaround:**
-- Store analysis metadata in `key_takeaways` JSONB
-- Map deep_sections to `deep_dive_strategy` as markdown
-- Split opportunities/risks on newlines
-
-**Recommended Fix:** Add dedicated analysis columns
-
-```sql
--- Migration 007: Add AI Analysis Columns
-ALTER TABLE content
-ADD COLUMN ai_analysis JSONB,  -- Full structured analysis from Claude
-ADD COLUMN analyzed_at TIMESTAMPTZ;
-
--- Migrate existing data
-UPDATE content SET
-    ai_analysis = jsonb_build_object(
-        'headline', key_takeaways->>'headline',
-        'sections', (/* parse from deep_dive_strategy */),
-        'metrics', key_takeaways->'metrics',
-        'sentiment', key_takeaways->'sentiment'
-    ),
-    analyzed_at = created_at;
-```
-
-**Benefits:**
-- Clear separation of concerns
-- Easier to re-process/regenerate product content
-- Full audit trail of AI analysis
-- No lossy mapping
-
----
-
-### Issue #2: Missing status Column in content
-
-**Problem:** Code assumes `content.status` exists for filtering published content.
-
-**Current Workaround:** Use `WHERE executive_summary IS NOT NULL` or `WHERE published_at IS NOT NULL`
-
-**Recommended Fix:** Add status column
-
-```sql
-ALTER TABLE content
-ADD COLUMN status VARCHAR DEFAULT 'draft';
-
--- Options: draft, review, published, archived
-CREATE INDEX idx_content_status ON content(status);
-```
-
----
-
-### Issue #3: fiscal_period vs fiscal_quarter Inconsistency
-
-**Problem:**
-- Database stores `fiscal_quarter` as INTEGER (1-4, NULL for FY)
-- Code expects `fiscal_period` as STRING ("Q1", "Q2", "Q3", "Q4", "FY")
-
-**Current Workaround:** Convert on read:
 ```python
-fiscal_period = f'Q{fiscal_quarter}' if fiscal_quarter else 'FY'
+@dataclass
+class AnalysisResult:
+    filing_id: str
+    
+    # TLDR content (free tier)
+    tldr_headline: str
+    tldr_summary: str
+    tldr_key_points: List[str]
+    
+    # Deep analysis (paid tier)
+    deep_headline: Optional[str] = None
+    deep_intro: Optional[str] = None
+    deep_sections: Optional[List[Dict[str, str]]] = None
+    deep_conclusion: Optional[str] = None
+    
+    # Metadata
+    key_metrics: Optional[Dict[str, Any]] = None
+    sentiment_score: Optional[float] = None  # -1.0 to 1.0
+    bull_case: Optional[str] = None
+    bear_case: Optional[str] = None
+    risk_factors: Optional[List[str]] = None
+    opportunities: Optional[List[str]] = None
+    
+    # AI metadata
+    model_version: Optional[str] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    analysis_duration_seconds: Optional[float] = None
 ```
 
-**Recommendation:** Keep as-is - integer storage is more efficient, conversion is trivial
+---
+
+## Pipeline Data Flow
+
+```
+SEC EDGAR Filing
+    ↓
+Phase 1: FETCH
+    • Downloads filing from SEC
+    • Stores in S3
+    • Creates filings row (status: pending)
+    ↓
+Phase 2: ANALYZE
+    • Extracts text sections from filing
+    • Calls Claude via AWS Bedrock
+    • Returns AnalysisResult
+    • Saves to content table
+    ↓
+Phase 3: GENERATE
+    • Transforms analysis to HTML
+    • Updates blog_html, email_html
+    ↓
+Phase 4: PUBLISH
+    • Gets subscribers from database
+    • Filters by tier (free/paid)
+    • Sends via Resend API
+    ↓
+Subscriber Inboxes
+```
 
 ---
 
-## Migration History
+## Key Details
 
-| # | Filename | Description | Applied |
-|---|----------|-------------|---------|
-| 001 | initial_schema.sql | Create all tables | ✅ |
-| 002 | seed_companies.sql | Load 47 tech companies | ✅ |
-| 003 | (skipped) | - | - |
-| 004 | fix_processing_logs.sql | Add level column | ✅ |
-| 005 | make_status_nullable.sql | Allow NULL status | ✅ |
-| 006 | add_html_columns.sql | Add blog_html, email_html | ✅ |
-| 007 | (planned) | Add ai_analysis, status columns | ⏳ |
-| 008 | add_vector_embeddings.sql | Add document_embeddings, analysis_embeddings tables | 📋 Phase 2.5 |
+### Financial Metrics Extraction
+- **Plain Text Filings**: Searches for "ITEM X" headers, extracts 15,000 chars
+- **HTML/XBRL Filings**: Uses `_extract_html_tables()`, extracts 30,000 chars with proper structure ✓
 
----
+### Slug Format
+```
+{ticker}/{fiscal_year}/{period}/{filing_type}
+Examples: "nvda/2025/q3/10-q", "aapl/2024/fy/10-k"
+```
 
-## Best Practices
-
-1. **Always check this document** before writing queries
-2. **Use typed queries** with proper column validation
-3. **Update this doc** when schema changes
-4. **Test migrations** in local Postgres before RDS
-5. **Version JSONB schemas** in this doc when changing structure
+### Tier-Based Distribution
+- **Free tier**: tldr_headline, tldr_summary, tldr_key_points only
+- **Paid tier**: Full deep_headline, deep_sections, deep_conclusion
 
 ---
 
-**Questions?** See `migrations/` folder for SQL source of truth.
+## Common Queries
+
+### Get pending analyses
+```sql
+SELECT f.id, f.filing_type, f.fiscal_year
+FROM filings f
+WHERE f.status = 'pending'
+ORDER BY f.filed_date DESC
+```
+
+### Get ready-to-publish content
+```sql
+SELECT c.id, c.slug
+FROM content c
+WHERE c.blog_html IS NOT NULL AND c.published_at IS NULL
+ORDER BY c.created_at DESC
+LIMIT 20
+```
+
+### Check financial metrics
+```sql
+SELECT c.slug, c.key_takeaways->'metrics' as financial_metrics
+FROM content c
+WHERE c.filing_id = '...'
+```
