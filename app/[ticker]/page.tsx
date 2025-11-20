@@ -23,6 +23,7 @@ interface CompanyWithAnalyses {
   ticker: string;
   name: string;
   domain?: string | null;
+  investor_relations_url?: string | null;
   metadata?: CompanyMetadata | null;
   analyses: Analysis[];
 }
@@ -35,8 +36,8 @@ async function getCompanyAnalyses(ticker: string): Promise<CompanyWithAnalyses |
   const upperTicker = ticker.toUpperCase();
 
   // Get company info
-  const companies = await query<{ ticker: string; name: string; metadata: any }>(
-    'SELECT ticker, name, metadata FROM companies WHERE UPPER(ticker) = $1',
+  const companies = await query<{ ticker: string; name: string; metadata: any, investor_relations_url: string | null }>(
+    'SELECT ticker, name, metadata, investor_relations_url FROM companies WHERE UPPER(ticker) = $1',
     [upperTicker]
   );
 
@@ -79,6 +80,7 @@ async function getCompanyAnalyses(ticker: string): Promise<CompanyWithAnalyses |
     ticker: company.ticker,
     name: company.name,
     domain: company.metadata?.domain,
+    investor_relations_url: company.investor_relations_url,
     metadata: company.metadata as CompanyMetadata,
     analyses
   };
@@ -155,6 +157,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             ticker={companyData.ticker}
             name={companyData.name}
             metadata={companyData.metadata}
+            investorRelationsUrl={companyData.investor_relations_url}
           />
           <CompanyProducts products={companyData.metadata?.products} />
           <CompanyGeography geography={companyData.metadata?.geography} />

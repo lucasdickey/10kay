@@ -16,7 +16,7 @@ from typing import List, Optional
 import psycopg2
 
 from utils import get_config, PipelineLogger, setup_root_logger
-from fetchers import EdgarFetcher, FilingType
+from fetchers import EdgarFetcher, FilingType, PressReleaseFetcher, IrUrlFetcher
 from fetchers.earnings_calendar import EarningsCalendarFetcher
 from analyzers import ClaudeAnalyzer, AnalysisType
 from generators import BlogGenerator, ContentFormat
@@ -93,6 +93,60 @@ def fetch_phase(conn, logger, config, tickers: Optional[List[str]] = None):
 
     logger.info(f"Fetch phase complete: {total_fetched} new filings")
     return total_fetched
+
+
+def ir_url_phase(conn, logger, config):
+    """
+    Phase 1.2: Fetch investor relations URLs for companies that don't have them.
+    """
+    logger.info("=" * 60)
+    logger.info("PHASE 1.2: Fetching Investor Relations URLs")
+    logger.info("=" * 60)
+
+    # Get companies without an investor relations URL
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, name
+        FROM companies
+        WHERE investor_relations_url IS NULL
+    """)
+    companies_to_fetch = cursor.fetchall()
+    cursor.close()
+
+    logger.info(f"Found {len(companies_to_fetch)} companies missing an investor relations URL.")
+
+    fetcher = IrUrlFetcher(config, conn, logger)
+
+    for company_id, company_name in companies_to_fetch:
+        fetcher.process_company(company_id, company_name)
+
+
+def press_release_phase(conn, logger, config):
+    """
+    Phase 1.5: Fetch press releases for recent filings.
+    """
+    logger.info("=" * 60)
+    logger.info("PHASE 1.5: Fetching Press Releases")
+    logger.info("=" * 60)
+
+    # Get filings from the last 3 days
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, ticker, filing_type, filing_date
+        FROM filings
+        WHERE filing_date >= NOW() - INTERVAL '3 days'
+        ORDER BY filing_date DESC
+    """)
+    recent_filings = cursor.fetchall()
+    cursor.close()
+
+    logger.info(f"Found {len(recent_filings)} recent filings to check for press releases.")
+
+    fetcher = PressReleaseFetcher(config, conn, logger)
+
+    for filing_id, ticker, filing_type, filing_date in recent_filings:
+        filing = argparse.Namespace(id=filing_id, ticker=ticker, filing_type=filing_type, filing_date=filing_date)
+        fetcher.process_filing(filing)
 
 
 def earnings_calendar_phase(conn, logger, config, tickers: Optional[List[str]] = None):
@@ -333,7 +387,7 @@ def main():
     parser = argparse.ArgumentParser(description='10KAY Pipeline Orchestrator')
     parser.add_argument(
         '--phase',
-        choices=['fetch', 'earnings-calendar', 'analyze', 'generate', 'publish', 'all'],
+        choices=['fetch', 'press-release', 'ir-url', 'earnings-calendar', 'analyze', 'generate', 'publish', 'all'],
         default='all',
         help='Pipeline phase to run'
     )
@@ -377,6 +431,12 @@ def main():
         # Execute requested phase(s)
         if args.phase in ['fetch', 'all']:
             fetch_phase(conn, logger, config, args.tickers)
+
+        if args.phase in ['press-release', 'all']:
+            press_release_phase(conn, logger, config)
+
+        if args.phase in ['ir-url', 'all']:
+            ir_url_phase(conn, logger, config)
 
         if args.phase in ['earnings-calendar']:
             earnings_calendar_phase(conn, logger, config, args.tickers)

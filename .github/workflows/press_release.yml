@@ -1,0 +1,37 @@
+name: Fetch Press Releases
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run at midnight UTC every day
+
+  workflow_dispatch:
+
+jobs:
+  fetch-press-releases:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pipeline/requirements.txt
+          pip install python-dotenv psycopg2-binary
+
+      - name: Run press release fetcher
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_BUCKET_FILINGS: ${{ secrets.S3_BUCKET_FILINGS }}
+        run: |
+          python3 pipeline/main.py --phase press-release
