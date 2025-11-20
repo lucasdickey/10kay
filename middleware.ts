@@ -1,6 +1,12 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
-export default clerkMiddleware();
+export default clerkMiddleware({
+  publicRoutes: [
+    "/",
+    "/([A-Z]{1,5})", // Matches /AAPL, /GOOGL, etc.
+    "/api/summaries/(.*)",
+  ],
+});
 
 export const config = {
   matcher: [

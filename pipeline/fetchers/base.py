@@ -14,6 +14,7 @@ class FilingType(str, Enum):
     """SEC filing types we track"""
     FORM_10K = '10-K'
     FORM_10Q = '10-Q'
+    FORM_13F = '13F-HR'
 
 
 @dataclass
@@ -23,7 +24,7 @@ class FilingMetadata:
 
     This matches the structure of the filings table in the database.
     """
-    ticker: str
+    ticker: Optional[str]
     filing_type: FilingType
     filing_date: datetime
     fiscal_year: int
@@ -35,6 +36,7 @@ class FilingMetadata:
     # Additional metadata
     company_name: Optional[str] = None
     cik: Optional[str] = None
+    manager_cik: Optional[str] = None
     form_type: Optional[str] = None
     file_size: Optional[int] = None
 
