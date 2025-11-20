@@ -1,57 +1,33 @@
 /**
- * Tracked Companies Page
+ * Companies Page
  *
- * Displays all companies being tracked by 10KAY with search and filter functionality
+ * Displays all tracked companies with market cap, performance metrics,
+ * and search/filter functionality (merged from Issues #32 and #33)
  */
 
-import Link from 'next/link';
+import { getAllCompaniesPerformance } from '@/lib/performance';
 import { query } from '@/lib/db';
-import { CompanyLogo } from '@/lib/company-logo';
 import { Navigation } from '@/components/Navigation';
-import { CompaniesFilter } from '@/components/CompaniesFilter';
+import { CompaniesFilter } from '@/components/CompaniesFilterWithPerformance';
 
-interface CompanyWithStats {
-  id: string;
-  ticker: string;
-  name: string;
-  sector: string | null;
-  enabled: boolean;
-  metadata: Record<string, any> | null;
-  filings_count: string;
-  latest_filing_date: Date | null;
-  latest_filing_type: string | null;
-}
-
-async function getTrackedCompanies(): Promise<CompanyWithStats[]> {
-  return await query<CompanyWithStats>(
-    `
-    SELECT
-      c.id,
-      c.ticker,
-      c.name,
-      c.sector,
-      c.enabled,
-      c.metadata,
-      COUNT(f.id) as filings_count,
-      MAX(f.filing_date) as latest_filing_date,
-      (
-        SELECT f2.filing_type
-        FROM filings f2
-        WHERE f2.company_id = c.id
-        ORDER BY f2.filing_date DESC
-        LIMIT 1
-      ) as latest_filing_type
-    FROM companies c
-    LEFT JOIN filings f ON c.id = f.company_id
-    WHERE c.enabled = true
-    GROUP BY c.id, c.ticker, c.name, c.sector, c.enabled, c.metadata
-    ORDER BY c.name ASC
-    `
+async function getTotalFilingsCount(): Promise<number> {
+  const result = await query<{ count: string }>(
+    'SELECT COUNT(DISTINCT c.id) as count FROM content c WHERE c.blog_html IS NOT NULL'
   );
+  return parseInt(result[0]?.count || '0');
 }
 
 export default async function CompaniesPage() {
-  const companies = await getTrackedCompanies();
+  const [performance, totalFilingsCount] = await Promise.all([
+    getAllCompaniesPerformance(),
+    getTotalFilingsCount(),
+  ]);
+
+  // Calculate some stats
+  const companiesWithData = performance.filter(c => c.priceChange7d !== null).length;
+  const averageChange = performance
+    .filter(c => c.priceChange7d !== null)
+    .reduce((sum, c) => sum + (c.priceChange7d || 0), 0) / (companiesWithData || 1);
 
   return (
     <div className="min-h-screen bg-white">
@@ -68,15 +44,37 @@ export default async function CompaniesPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Tracked Companies
           </h1>
-          <p className="text-lg text-gray-600">
-            {companies.length} tech companies monitored for SEC filing insights
+          <p className="text-lg text-gray-600 mb-4">
+            {performance.length} tech companies monitored for SEC filing insights
           </p>
+
+          {/* Stats */}
+          <div className="flex gap-8 text-sm flex-wrap">
+            <div>
+              <span className="font-semibold text-gray-900">{performance.length}</span>
+              <span className="text-gray-600 ml-1">Companies Tracked</span>
+            </div>
+            <div>
+              <span className="font-semibold text-gray-900">{companiesWithData}</span>
+              <span className="text-gray-600 ml-1">With Market Data</span>
+            </div>
+            <div>
+              <span className="font-semibold text-gray-900">{totalFilingsCount}</span>
+              <span className="text-gray-600 ml-1">Analyses Published</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Avg 7d Change: </span>
+              <span className={`font-semibold ${averageChange > 0 ? 'text-green-600' : averageChange < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                {averageChange > 0 && '+'}{averageChange.toFixed(2)}%
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-12">
-        <CompaniesFilter companies={companies} />
+        <CompaniesFilter companies={performance} totalFilingsCount={totalFilingsCount} />
       </main>
 
       {/* Footer */}
