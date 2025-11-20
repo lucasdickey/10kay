@@ -10,6 +10,7 @@ from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 import re
+import html
 
 from .base import (
     BaseAnalyzer,
@@ -124,6 +125,64 @@ class ClaudeAnalyzer(BaseAnalyzer):
         except Exception as e:
             raise FetchError(f"Failed to fetch filing content: {e}")
 
+    def _extract_html_tables(self, content: str) -> str:
+        """
+        Extract and convert HTML tables to readable text format
+
+        Targets financial statement tables in HTML/XBRL filings.
+        Handles nested tables, merged cells, and HTML entities.
+
+        Args:
+            content: Raw HTML content
+
+        Returns:
+            Converted table text with financial data
+        """
+        tables_text = []
+
+        # Find all table elements
+        table_pattern = r'<table[^>]*>(.*?)</table>'
+        tables = re.findall(table_pattern, content, re.IGNORECASE | re.DOTALL)
+
+        for table_html in tables:
+            # Skip navigation/formatting tables (usually short)
+            if len(table_html) < 200:
+                continue
+
+            # Extract rows
+            row_pattern = r'<tr[^>]*>(.*?)</tr>'
+            rows = re.findall(row_pattern, table_html, re.IGNORECASE | re.DOTALL)
+
+            if not rows:
+                continue
+
+            table_rows = []
+            for row_html in rows:
+                # Extract cells (both td and th)
+                cell_pattern = r'<(?:td|th)[^>]*>(.*?)</(?:td|th)>'
+                cells = re.findall(cell_pattern, row_html, re.IGNORECASE | re.DOTALL)
+
+                if cells:
+                    # Clean up cell content
+                    cleaned_cells = []
+                    for cell in cells:
+                        # Remove nested HTML tags
+                        cell_text = re.sub(r'<[^>]+>', ' ', cell)
+                        # Decode HTML entities
+                        cell_text = html.unescape(cell_text)
+                        # Remove extra whitespace
+                        cell_text = re.sub(r'\s+', ' ', cell_text).strip()
+                        if cell_text:
+                            cleaned_cells.append(cell_text)
+
+                    if cleaned_cells:
+                        table_rows.append(' | '.join(cleaned_cells))
+
+            if table_rows:
+                tables_text.append('\n'.join(table_rows))
+
+        return '\n\n'.join(tables_text)
+
     def extract_relevant_sections(self, content: str) -> Dict[str, str]:
         """
         Extract relevant sections from SEC filing
@@ -184,13 +243,31 @@ class ClaudeAnalyzer(BaseAnalyzer):
             sections['md_and_a'] = mda_match.group(2)[:20000]  # Limit to 20k chars
 
         # Financial Statements (Item 8 or Part I Item 1)
-        financial_match = re.search(
-            r'(?:ITEM\s+8|Item\s+8|ITEM\s+1[^A\d]|Item\s+1[^A\d])(.{0,100}?)(?:FINANCIAL STATEMENTS|Financial Statements)(.*?)(?:ITEM\s+9|Item\s+9|ITEM\s+2|Item\s+2)',
-            text,
-            re.IGNORECASE | re.DOTALL
-        )
-        if financial_match:
-            sections['financial_statements'] = financial_match.group(2)[:15000]  # Limit to 15k chars
+        is_html = '<table' in content.lower() or '<html' in content.lower()
+
+        if is_html:
+            # For HTML/XBRL filings, extract HTML tables for better financial data
+            html_tables = self._extract_html_tables(content)
+            if html_tables:
+                sections['financial_statements'] = html_tables[:30000]  # Increased limit for table data
+
+            # Also try regex extraction as fallback
+            financial_match = re.search(
+                r'(?:ITEM\s+8|Item\s+8|ITEM\s+1[^A\d]|Item\s+1[^A\d])(.{0,100}?)(?:FINANCIAL STATEMENTS|Financial Statements)(.*?)(?:ITEM\s+9|Item\s+9|ITEM\s+2|Item\s+2)',
+                text,
+                re.IGNORECASE | re.DOTALL
+            )
+            if financial_match and 'financial_statements' not in sections:
+                sections['financial_statements'] = financial_match.group(2)[:15000]
+        else:
+            # Plain text filings use standard regex extraction
+            financial_match = re.search(
+                r'(?:ITEM\s+8|Item\s+8|ITEM\s+1[^A\d]|Item\s+1[^A\d])(.{0,100}?)(?:FINANCIAL STATEMENTS|Financial Statements)(.*?)(?:ITEM\s+9|Item\s+9|ITEM\s+2|Item\s+2)',
+                text,
+                re.IGNORECASE | re.DOTALL
+            )
+            if financial_match:
+                sections['financial_statements'] = financial_match.group(2)[:15000]
 
         # If we didn't find specific sections, just take the first large chunk
         if not sections:
