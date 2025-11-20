@@ -1,0 +1,6 @@
+**Analysis Summary**
+
+- **Filings analyzed**: 1
+- **Failed**: 0
+- **Success rate**: 100.0%
+- **Completed**: 2025-11-18T23:24:13.745351

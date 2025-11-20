@@ -9,7 +9,14 @@
       "Read(//tmp/**)",
       "Bash(npm run build:*)",
       "Bash(gh issue create:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run list:*)",
+      "Bash(source .env.local:*)",
+      "Bash(psql:*)"
     ]
   },
   "outputStyle": "Explanatory"
