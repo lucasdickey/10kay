@@ -138,7 +138,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
   const [performance, aggregateChange, sectorChange] = await Promise.all([
     getCompany7DayPerformance(companyData.ticker),
     getAggregate7DayPerformance(),
-    companyData.metadata?.sector ? getSector7DayPerformance(companyData.metadata.sector) : Promise.resolve(null),
+    companyData.metadata?.characteristics?.sector ? getSector7DayPerformance(companyData.metadata.characteristics.sector) : Promise.resolve(null),
   ]);
 
   return (
@@ -170,7 +170,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             priceChange7d={performance.priceChange7d}
             aggregateChange7d={aggregateChange}
             sectorChange7d={sectorChange}
-            sector={companyData.metadata?.sector || null}
+            sector={companyData.metadata?.characteristics?.sector || null}
           />
           <CompanyProducts products={companyData.metadata?.products} />
           <CompanyGeography geography={companyData.metadata?.geography} />

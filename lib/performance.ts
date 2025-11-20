@@ -154,7 +154,7 @@ export async function getSector7DayPerformance(sector: string): Promise<number |
       ) cmd2 ON true
       WHERE cmd1.data_date = (SELECT MAX(data_date) FROM company_market_data)
         AND c.enabled = true
-        AND c.sector = $1
+        AND c.metadata->'characteristics'->>'sector' = $1
         AND cmd1.price IS NOT NULL
         AND cmd2.price IS NOT NULL
         AND cmd2.price > 0
@@ -188,7 +188,7 @@ export async function getAllCompaniesPerformance(): Promise<CompanyPerformance[]
         c.id as company_id,
         c.ticker,
         c.name as company_name,
-        c.sector,
+        c.metadata->'characteristics'->>'sector' as sector,
         cmd1.price as current_price,
         cmd1.market_cap,
         cmd1.data_date as last_updated,
