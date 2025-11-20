@@ -81,8 +81,9 @@ class FinnhubConfig:
         """Load Finnhub config from environment variables"""
         # Use demo key as fallback for pipeline phases that don't use Finnhub
         # (fetch, analyze, generate, publish all work without it)
-        # Only earnings-calendar phase actually uses this API key
-        api_key = os.getenv('FINHUB_API_KEY', 'demo_key_for_pipeline_config')
+        # Only earnings-calendar and market-data phases actually use this API key
+        # Try correct spelling first, fall back to typo version for backward compatibility
+        api_key = os.getenv('FINNHUB_API_KEY') or os.getenv('FINHUB_API_KEY', 'demo_key_for_pipeline_config')
         return cls(api_key=api_key)
 
 

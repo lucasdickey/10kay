@@ -2,7 +2,7 @@
 -- Data sourced from Finnhub earnings calendar API
 -- This provides actual scheduled dates rather than estimates based on historical patterns
 
-CREATE TABLE scheduled_earnings (
+CREATE TABLE IF NOT EXISTS scheduled_earnings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     ticker VARCHAR NOT NULL,  -- Denormalized for performance
@@ -34,17 +34,17 @@ CREATE TABLE scheduled_earnings (
 );
 
 -- Indexes for common queries
-CREATE INDEX idx_scheduled_earnings_date ON scheduled_earnings(earnings_date);
-CREATE INDEX idx_scheduled_earnings_company ON scheduled_earnings(company_id);
-CREATE INDEX idx_scheduled_earnings_ticker ON scheduled_earnings(ticker);
+CREATE INDEX IF NOT EXISTS idx_scheduled_earnings_date ON scheduled_earnings(earnings_date);
+CREATE INDEX IF NOT EXISTS idx_scheduled_earnings_company ON scheduled_earnings(company_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_earnings_ticker ON scheduled_earnings(ticker);
 
 -- Partial index for upcoming earnings only (most common query)
 -- Note: Using fixed date instead of CURRENT_DATE because PostgreSQL requires immutable expressions
-CREATE INDEX idx_scheduled_earnings_upcoming ON scheduled_earnings(earnings_date, status)
+CREATE INDEX IF NOT EXISTS idx_scheduled_earnings_upcoming ON scheduled_earnings(earnings_date, status)
     WHERE status = 'scheduled';
 
 -- Index for finding filings that match scheduled earnings
-CREATE INDEX idx_scheduled_earnings_filing ON scheduled_earnings(filing_id)
+CREATE INDEX IF NOT EXISTS idx_scheduled_earnings_filing ON scheduled_earnings(filing_id)
     WHERE filing_id IS NOT NULL;
 
 -- Comments
@@ -52,7 +52,3 @@ COMMENT ON TABLE scheduled_earnings IS 'Company-announced earnings dates from Fi
 COMMENT ON COLUMN scheduled_earnings.earnings_time IS 'bmo = before market open, amc = after market close';
 COMMENT ON COLUMN scheduled_earnings.status IS 'scheduled = upcoming, completed = filing received, cancelled = date changed';
 COMMENT ON COLUMN scheduled_earnings.filing_id IS 'Links to actual SEC filing when it appears';
-
--- Record migration
-INSERT INTO schema_migrations (migration_name, applied_at)
-VALUES ('007_add_scheduled_earnings.sql', now());
