@@ -169,14 +169,6 @@ export function CompaniesFilter({ companies }: CompaniesFilterProps) {
                       </span>
                     </div>
                   )}
-
-                  {/* Market Value Placeholder */}
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <span className="text-gray-500">Market Cap:</span>
-                    <span className="text-xs text-gray-400 italic">
-                      Coming soon
-                    </span>
-                  </div>
                 </div>
 
                 {/* View Details Link */}

@@ -151,10 +151,10 @@ export default async function Home() {
       <div className="bg-gray-50 border-b">
         <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 py-4">
           <div className="flex gap-8 text-sm">
-            <div>
+            <Link href="/companies" className="hover:opacity-75 transition-opacity cursor-pointer">
               <span className="font-semibold text-gray-900">{companyCount}</span>
               <span className="text-gray-600 ml-1">Companies Tracked</span>
-            </div>
+            </Link>
             <div>
               <span className="font-semibold text-gray-900">{filingCount}</span>
               <span className="text-gray-600 ml-1">Analyses Published</span>
