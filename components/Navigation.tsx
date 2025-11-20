@@ -1,5 +1,6 @@
 import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
+import { HeaderSearch } from "./HeaderSearch";
 
 export function Navigation() {
   return (
@@ -14,6 +15,17 @@ export function Navigation() {
       </div>
 
       <div className="flex items-center gap-4">
+        {/* Header Search */}
+        <HeaderSearch />
+
+        {/* Companies Link - Always visible */}
+        <Link
+          href="/companies"
+          className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+        >
+          Companies
+        </Link>
+
         <SignedOut>
           <SignInButton mode="modal">
             <button className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors">
