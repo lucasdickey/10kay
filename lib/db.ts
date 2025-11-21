@@ -120,4 +120,5 @@ export interface Analysis extends Content {
   filing_date: Date;
   fiscal_year: number | null;
   fiscal_quarter: number | null;
+  edgar_url: string | null;
 }

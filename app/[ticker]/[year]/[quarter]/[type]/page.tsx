@@ -117,6 +117,44 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
   // Render with pre-generated HTML only (no redundant header)
   return (
     <div className="min-h-screen bg-white">
+      {/* Filing Header with Download Link */}
+      {analysis.edgar_url && (
+        <div className="border-b border-gray-200 bg-gray-50">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">
+                  {analysis.company_ticker} • {analysis.filing_type} • Filed {new Date(analysis.filing_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+              <a
+                href={analysis.edgar_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                title="View Original SEC Filing"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                View Original Filing
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Blog Content */}
       <div
         className="analysis-content"
