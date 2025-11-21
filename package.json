@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.35.1",
+    "@headlessui/react": "^2.2.9",
     "@types/pg": "^8.15.6",
     "next": "^15.1.4",
     "pg": "^8.16.3",
