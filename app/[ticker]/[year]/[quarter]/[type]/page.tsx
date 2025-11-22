@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { queryOne, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import { PressCoverageSection } from '@/components/PressCoverageSection';
 
 interface AnalysisPageProps {
   params: Promise<{
@@ -129,6 +130,19 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
         className="analysis-content"
         dangerouslySetInnerHTML={{ __html: modifiedHtml }}
       />
+
+      {/* Press Coverage Section */}
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="border-t border-gray-200 pt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            📰 Media Coverage
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Financial press articles published within 48 hours of this filing, analyzed for sentiment and relevance.
+          </p>
+          <PressCoverageSection filingId={analysis.filing_id} />
+        </div>
+      </div>
     </div>
   );
 }

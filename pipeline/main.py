@@ -19,7 +19,9 @@ from utils import get_config, PipelineLogger, setup_root_logger
 from fetchers import EdgarFetcher, FilingType
 from fetchers.earnings_calendar import EarningsCalendarFetcher
 from fetchers.market_data import MarketDataFetcher
+from fetchers.press import PressFetcher
 from analyzers import ClaudeAnalyzer, AnalysisType
+from analyzers.press_analyzer import PressAnalyzer
 from generators import BlogGenerator, ContentFormat
 from publishers import EmailPublisher, PublishChannel
 
@@ -178,6 +180,99 @@ def market_data_phase(conn, logger, config, tickers: Optional[List[str]] = None)
     except Exception as e:
         logger.error("✗ Failed to fetch market data", exception=e)
         return 0
+
+
+def press_phase(conn, logger, config, tickers: Optional[List[str]] = None):
+    """
+    Fetch press coverage for recent filings and analyze sentiment
+
+    Fetches articles from news sources within 48 hours of filing date,
+    then uses Claude to analyze sentiment and relevance scores.
+
+    Args:
+        conn: Database connection
+        logger: PipelineLogger
+        config: PipelineConfig
+        tickers: Optional list of specific tickers to process
+    """
+    logger.info("=" * 60)
+    logger.info("PRESS COVERAGE: Fetching & Analyzing Media Articles")
+    logger.info("=" * 60)
+
+    # Get recent filings (last 7 days) to check for press coverage
+    cursor = conn.cursor()
+
+    # Build ticker filter if specified
+    ticker_filter = ""
+    params = []
+    if tickers:
+        ticker_filter = "AND f.ticker = ANY(%s)"
+        params.append(tickers)
+
+    cursor.execute(f"""
+        SELECT f.id, f.ticker, f.filing_date, c.name, f.filing_type
+        FROM filings f
+        JOIN companies c ON f.company_id = c.id
+        WHERE f.filing_date >= CURRENT_DATE - INTERVAL '7 days'
+        {ticker_filter}
+        ORDER BY f.filing_date DESC
+    """, params)
+
+    filings = []
+    for row in cursor.fetchall():
+        filings.append({
+            'id': row[0],
+            'ticker': row[1],
+            'filing_date': row[2],
+            'company_name': row[3],
+            'filing_type': row[4]
+        })
+
+    cursor.close()
+
+    if not filings:
+        logger.info("No recent filings found (last 7 days)")
+        return 0
+
+    logger.info(f"Found {len(filings)} recent filings to check for press coverage")
+
+    # Initialize fetcher and analyzer
+    press_fetcher = PressFetcher(config, conn, logger)
+    press_analyzer = PressAnalyzer(config, conn, logger)
+
+    total_articles = 0
+    total_analyzed = 0
+
+    for filing in filings:
+        logger.info(f"Processing {filing['ticker']} ({filing['filing_type']}) from {filing['filing_date']}")
+
+        try:
+            # Fetch press articles
+            articles_saved = press_fetcher.process_filing(
+                filing_id=filing['id'],
+                ticker=filing['ticker'],
+                filing_date=filing['filing_date'],
+                company_name=filing['company_name']
+            )
+
+            total_articles += articles_saved
+            logger.info(f"✓ Fetched {articles_saved} articles for {filing['ticker']}")
+
+            # Analyze sentiment and relevance
+            if articles_saved > 0:
+                analyzed = press_analyzer.process_filing_articles(filing['id'])
+                total_analyzed += analyzed
+                logger.info(f"✓ Analyzed {analyzed} articles for {filing['ticker']}")
+
+        except Exception as e:
+            logger.error(
+                f"✗ Failed to process press coverage for {filing['ticker']}",
+                exception=e
+            )
+            continue
+
+    logger.info(f"Press coverage phase complete: {total_articles} articles fetched, {total_analyzed} analyzed")
+    return total_articles
 
 
 def analyze_phase(conn, logger, config):
@@ -374,7 +469,7 @@ def main():
     parser = argparse.ArgumentParser(description='10KAY Pipeline Orchestrator')
     parser.add_argument(
         '--phase',
-        choices=['fetch', 'earnings-calendar', 'market-data', 'analyze', 'generate', 'publish', 'all'],
+        choices=['fetch', 'earnings-calendar', 'market-data', 'press', 'analyze', 'generate', 'publish', 'all'],
         default='all',
         help='Pipeline phase to run'
     )
@@ -424,6 +519,9 @@ def main():
 
         if args.phase in ['market-data']:
             market_data_phase(conn, logger, config, args.tickers)
+
+        if args.phase in ['press']:
+            press_phase(conn, logger, config, args.tickers)
 
         if args.phase in ['analyze', 'all']:
             analyze_phase(conn, logger, config)

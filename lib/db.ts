@@ -122,3 +122,27 @@ export interface Analysis extends Content {
   fiscal_quarter: number | null;
   edgar_url: string | null;
 }
+
+export interface PressCoverage {
+  id: string;
+  filing_id: string;
+  source: string;
+  headline: string;
+  url: string;
+  author: string | null;
+  published_at: Date;
+  article_snippet: string | null;
+  full_text: string | null;
+  sentiment_score: number | null;
+  relevance_score: number | null;
+  scraped_at: Date;
+  source_api: string;
+  metadata: Record<string, any> | null;
+}
+
+export interface PressArticleWithContext extends PressCoverage {
+  ticker: string;
+  company_name: string;
+  filing_type: string;
+  filing_date: Date;
+}

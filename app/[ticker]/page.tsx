@@ -12,6 +12,7 @@ import { CompanyOverview } from '@/components/CompanyOverview';
 import { CompanyProducts } from '@/components/CompanyProducts';
 import { CompanyGeography } from '@/components/CompanyGeography';
 import { CompanyPerformanceMetrics } from '@/components/CompanyPerformanceMetrics';
+import { PressCoverageSection } from '@/components/PressCoverageSection';
 import { CompanyMetadata } from '@/lib/company-types';
 import { getCompany7DayPerformance, getAggregate7DayPerformance, getSector7DayPerformance } from '@/lib/performance';
 
@@ -174,6 +175,17 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
           />
           <CompanyProducts products={companyData.metadata?.products} />
           <CompanyGeography geography={companyData.metadata?.geography} />
+        </div>
+
+        {/* Recent Press Coverage */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            📰 Recent Media Coverage
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Financial press articles about {companyData.name} from the last 30 days.
+          </p>
+          <PressCoverageSection ticker={companyData.ticker} limit={6} />
         </div>
 
         <h2 className="text-2xl font-bold text-gray-900 mb-8">

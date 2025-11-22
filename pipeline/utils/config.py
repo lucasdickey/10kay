@@ -88,12 +88,26 @@ class FinnhubConfig:
 
 
 @dataclass
+class NewsAPIConfig:
+    """NewsAPI.org configuration for press coverage"""
+    api_key: Optional[str]
+
+    @classmethod
+    def from_env(cls) -> 'NewsAPIConfig':
+        """Load NewsAPI config from environment variables"""
+        # NewsAPI is optional - press fetcher will skip it if not configured
+        api_key = os.getenv('NEWSAPI_KEY')
+        return cls(api_key=api_key)
+
+
+@dataclass
 class PipelineConfig:
     """Main pipeline configuration"""
     aws: AWSConfig
     database: DatabaseConfig
     sec: SECConfig
     finnhub: FinnhubConfig
+    newsapi: NewsAPIConfig
     dry_run: bool
     max_retries: int
     retry_delay: float  # seconds
@@ -106,6 +120,7 @@ class PipelineConfig:
             database=DatabaseConfig.from_env(),
             sec=SECConfig.from_env(),
             finnhub=FinnhubConfig.from_env(),
+            newsapi=NewsAPIConfig.from_env(),
             dry_run=os.getenv('DRY_RUN', 'false').lower() == 'true',
             max_retries=int(os.getenv('MAX_RETRIES', '3')),
             retry_delay=float(os.getenv('RETRY_DELAY', '2.0'))

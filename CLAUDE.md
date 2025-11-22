@@ -24,13 +24,16 @@
 - `components/LatestAnalysesFilter.tsx` - Main dashboard filter for analyses with date range selection
   - Default filter: "Trailing 2 Weeks"
   - Features: Fuzzy search by ticker/company name, sentiment badges, filing information
+- `components/PressCoverageSection.tsx` - Displays press coverage articles with filtering and stats
+- `components/PressCoverageCard.tsx` - Individual press article card with sentiment/relevance scores
 
 ### Pages
 - `app/page.tsx` - Home page with Latest Analyses
-- `app/[ticker]` - Individual company analysis page
-- `app/[ticker]/[year]/[quarter]/[type]` - Detailed filing analysis
+- `app/[ticker]` - Individual company analysis page (with recent press coverage)
+- `app/[ticker]/[year]/[quarter]/[type]` - Detailed filing analysis (with press coverage for filing)
 - `app/analysis/[id]` - Analysis detail page
 - `app/api/analyses` - API endpoints for analysis data
+- `app/api/press-coverage` - Press coverage API endpoint with filtering
 - `app/api/upcoming-filings` - Upcoming filings endpoint
 
 ## Development Notes
@@ -163,6 +166,65 @@ python3 pipeline/main.py --phase publish [--dry-run]
 
 **Dry Run Mode:** `--dry-run` flag validates without sending
 
+### Press Coverage Phase (Media Analysis)
+**Files:** `pipeline/fetchers/press.py`, `pipeline/analyzers/press_analyzer.py`
+
+Fetches and analyzes financial press articles related to SEC filings:
+
+```bash
+python3 pipeline/main.py --phase press [--tickers AAPL GOOGL ...]
+```
+
+**Process:**
+1. Query recent filings (last 7 days) from database
+2. For each filing:
+   - Fetch articles from news APIs (Finnhub, NewsAPI) within 48-hour window
+   - Deduplicate articles by URL
+   - Save to `press_coverage` table
+3. Analyze each article with Claude AI via Bedrock:
+   - **Sentiment Score**: -1.00 (very bearish) to +1.00 (very bullish)
+   - **Relevance Score**: 0.00 (unrelated) to 1.00 (directly about filing)
+4. Update database with sentiment and relevance scores
+
+**Supported News Sources:**
+- **Finnhub API**: WSJ, Bloomberg, Reuters, CNBC, MarketWatch, Yahoo Finance
+- **NewsAPI** (optional): NYT, FT, additional financial sources
+- **Future**: Direct scraping for paywalled content
+
+**Database Schema:**
+```sql
+CREATE TABLE press_coverage (
+  id UUID PRIMARY KEY,
+  filing_id UUID REFERENCES filings(id),
+  source VARCHAR(50),           -- 'WSJ', 'Bloomberg', etc.
+  headline TEXT,
+  url TEXT UNIQUE,
+  published_at TIMESTAMPTZ,
+  article_snippet TEXT,
+  sentiment_score NUMERIC(3,2), -- -1.00 to 1.00
+  relevance_score NUMERIC(3,2), -- 0.00 to 1.00
+  source_api VARCHAR(50),       -- 'finnhub', 'newsapi'
+  metadata JSONB
+);
+```
+
+**Frontend Integration:**
+- **Filing Detail Page** (`/[ticker]/[year]/[quarter]/[type]`): Shows press coverage for specific filing
+- **Company Page** (`/[ticker]`): Shows recent press coverage (last 30 days)
+- **API Endpoint** (`/api/press-coverage`): Supports filtering by filing_id, ticker, source, sentiment range
+
+**Example API Usage:**
+```typescript
+// Get press for specific filing
+fetch('/api/press-coverage?filing_id=abc-123')
+
+// Get recent articles for ticker, bullish sentiment only
+fetch('/api/press-coverage?ticker=AAPL&min_sentiment=0.3')
+
+// Filter by source
+fetch('/api/press-coverage?ticker=NVDA&source=Bloomberg')
+```
+
 ## Complete Command Reference
 
 ### Running Full Pipeline
@@ -181,6 +243,9 @@ python3 pipeline/main.py --log-level DEBUG
 ```bash
 # Fetch only
 python3 pipeline/main.py --phase fetch
+
+# Press coverage (fetch & analyze articles)
+python3 pipeline/main.py --phase press
 
 # Analyze only
 python3 pipeline/main.py --phase analyze
@@ -275,7 +340,8 @@ AWS_S3_FILINGS_BUCKET=10kay-filings
 AWS_BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 
 # Financial Data APIs
-FINHUB_API_KEY=your_finnhub_key  # For earnings calendar
+FINHUB_API_KEY=your_finnhub_key  # For earnings calendar & press coverage (Finnhub News API)
+NEWSAPI_KEY=your_newsapi_key  # Optional: For additional press sources (NewsAPI.org)
 CONTACT_EMAIL=your.email@company.com  # Required by SEC EDGAR
 
 # Email Distribution

@@ -106,6 +106,33 @@ This document consolidates all schema definitions (database tables, JSON structu
 | `resend_email_id` | VARCHAR | Resend API message ID |
 | `metadata` | JSONB | Additional delivery data |
 
+### `press_coverage` Table
+**Purpose**: Financial media articles related to SEC filings (captured within 48-hour window)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `filing_id` | UUID | FK to filings |
+| `source` | VARCHAR(50) | News source: WSJ, Bloomberg, FT, NYT, Yahoo Finance, AlphaSense |
+| `headline` | TEXT | Article headline |
+| `url` | TEXT | Article URL (unique) |
+| `author` | VARCHAR(255) | Article author (optional) |
+| `published_at` | TIMESTAMPTZ | When article was published |
+| `article_snippet` | TEXT | First 3-5 paragraphs or summary |
+| `full_text` | TEXT | Complete article text (if available) |
+| `sentiment_score` | NUMERIC(3,2) | AI-analyzed sentiment: -1.00 (bearish) to 1.00 (bullish) |
+| `relevance_score` | NUMERIC(3,2) | How related to filing: 0.00 (unrelated) to 1.00 (direct) |
+| `scraped_at` | TIMESTAMPTZ | When article was fetched |
+| `source_api` | VARCHAR(50) | Fetch method: newsapi, finnhub, direct_scrape |
+| `metadata` | JSONB | Additional data: tags, categories, images, related tickers |
+
+**Indexes**:
+- `idx_press_coverage_filing` - Efficient filing → articles lookup
+- `idx_press_coverage_published` - Time-based queries
+- `idx_press_coverage_source` - Filter by news source
+- `idx_press_coverage_sentiment` - Sort by sentiment
+- `idx_press_coverage_filing_timewindow` - 48-hour window queries
+
 ---
 
 ## Code Data Structures
@@ -218,4 +245,41 @@ LIMIT 20
 SELECT c.slug, c.key_takeaways->'metrics' as financial_metrics
 FROM content c
 WHERE c.filing_id = '...'
+```
+
+### Get press coverage for a filing
+```sql
+SELECT pc.source, pc.headline, pc.published_at, pc.sentiment_score
+FROM press_coverage pc
+WHERE pc.filing_id = '...'
+ORDER BY pc.published_at DESC
+```
+
+### Get press coverage within 48 hours of filing
+```sql
+SELECT
+  pc.source,
+  pc.headline,
+  pc.url,
+  pc.sentiment_score,
+  EXTRACT(EPOCH FROM (pc.published_at - f.filed_date)) / 3600 AS hours_after_filing
+FROM press_coverage pc
+JOIN filings f ON pc.filing_id = f.id
+WHERE f.id = '...'
+  AND pc.published_at BETWEEN f.filed_date AND (f.filed_date + INTERVAL '48 hours')
+ORDER BY pc.published_at ASC
+```
+
+### Get average sentiment by source
+```sql
+SELECT
+  pc.source,
+  COUNT(*) as article_count,
+  AVG(pc.sentiment_score) as avg_sentiment,
+  MIN(pc.sentiment_score) as most_bearish,
+  MAX(pc.sentiment_score) as most_bullish
+FROM press_coverage pc
+WHERE pc.sentiment_score IS NOT NULL
+GROUP BY pc.source
+ORDER BY avg_sentiment DESC
 ```
