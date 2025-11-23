@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { CompanyLogo } from "@/lib/company-logo";
+import ShareModal, { ShareButton } from "@/components/ShareModal";
 
 interface Analysis {
   id: string;
@@ -159,6 +160,11 @@ function getFiscalPeriod(fiscalYear: number | null, fiscalQuarter: number | null
 export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("trailing_2_weeks");
   const [searchQuery, setSearchQuery] = useState("");
+  const [shareModal, setShareModal] = useState<{ isOpen: boolean; url: string; title: string }>({
+    isOpen: false,
+    url: "",
+    title: "",
+  });
 
   const filteredAnalyses = useMemo(() => {
     const { start, end } = getDateRangeBoundaries(dateRangeFilter);
@@ -312,6 +318,16 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
                       >
                         {sentiment.label}
                       </span>
+                      <ShareButton
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setShareModal({
+                            isOpen: true,
+                            url: `/${analysis.slug}`,
+                            title: `${analysis.company_name} ${analysis.filing_type} Analysis`,
+                          });
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -389,6 +405,12 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
         </div>
       )}
 
+      <ShareModal
+        isOpen={shareModal.isOpen}
+        onClose={() => setShareModal({ ...shareModal, isOpen: false })}
+        url={shareModal.url}
+        title={shareModal.title}
+      />
     </>
   );
 }

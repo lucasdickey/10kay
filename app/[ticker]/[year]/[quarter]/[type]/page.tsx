@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { queryOne, Analysis } from '@/lib/db';
 import { CompanyLogo } from '@/lib/company-logo';
+import AnalysisPageShare from '@/components/AnalysisPageShare';
 
 interface AnalysisPageProps {
   params: Promise<{
@@ -115,12 +116,17 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
   }
 
   // Inject download icon next to sentiment badge in the pre-generated HTML
-  const modifiedHtml = analysis.edgar_url
-    ? analysis.blog_html.replace(
-        /(<span class="sentiment[^"]*">[^<]*<\/span>)/,
-        `$1<a href="${analysis.edgar_url}" target="_blank" rel="noopener noreferrer" class="filing-download-icon" title="View Original SEC Filing" style="display: inline-flex; align-items: center; margin-left: 8px; color: #6b7280; vertical-align: middle;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></a>`
-      )
-    : analysis.blog_html;
+  const downloadIcon = analysis.edgar_url
+    ? `<a href="${analysis.edgar_url}" target="_blank" rel="noopener noreferrer" class="filing-download-icon" title="View Original SEC Filing" style="display: inline-flex; align-items: center; margin-left: 8px; color: #6b7280; vertical-align: middle;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></a>`
+    : '';
+
+  // Add placeholder for share button after download icon
+  const modifiedHtml = analysis.blog_html.replace(
+    /(<span class="sentiment[^"]*">[^<]*<\/span>)/,
+    `$1${downloadIcon}<span id="share-button-mount"></span>`
+  );
+
+  const shareTitle = `${analysis.company_name} ${analysis.filing_type} Analysis`;
 
   return (
     <div className="min-h-screen bg-white">
@@ -129,6 +135,8 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
         className="analysis-content"
         dangerouslySetInnerHTML={{ __html: modifiedHtml }}
       />
+      {/* Share button (renders into mount point via portal) */}
+      <AnalysisPageShare slug={analysis.slug || ''} title={shareTitle} />
     </div>
   );
 }
