@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { CompanyLogo } from "@/lib/company-logo";
 
@@ -9,6 +9,7 @@ interface Analysis {
   slug: string | null;
   company_ticker: string;
   company_name: string;
+  sector?: string | null;
   filing_type: string;
   filing_date: Date | string;
   key_takeaways: Record<string, any>;
@@ -159,6 +160,46 @@ function getFiscalPeriod(fiscalYear: number | null, fiscalQuarter: number | null
 export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("trailing_2_weeks");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSectors, setSelectedSectors] = useState<Set<string>>(new Set());
+  const [showSectorDropdown, setShowSectorDropdown] = useState(false);
+  const sectorDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Get unique sectors
+  const sectors = useMemo(() => {
+    const uniqueSectors = new Set(
+      analyses
+        .map((a) => a.sector)
+        .filter((s): s is string => s !== null && s !== undefined && s !== '')
+    );
+    return Array.from(uniqueSectors).sort();
+  }, [analyses]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sectorDropdownRef.current && !sectorDropdownRef.current.contains(event.target as Node)) {
+        setShowSectorDropdown(false);
+      }
+    };
+
+    if (showSectorDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showSectorDropdown]);
+
+  // Handle sector checkbox toggle
+  const toggleSector = (sector: string) => {
+    setSelectedSectors((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(sector)) {
+        newSet.delete(sector);
+      } else {
+        newSet.add(sector);
+      }
+      return newSet;
+    });
+  };
 
   const filteredAnalyses = useMemo(() => {
     const { start, end } = getDateRangeBoundaries(dateRangeFilter);
@@ -167,6 +208,11 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
       const filingDate = new Date(analysis.filing_date);
       return filingDate >= start && filingDate <= end;
     });
+
+    // Apply sector filter
+    if (selectedSectors.size > 0) {
+      filtered = filtered.filter((analysis) => analysis.sector && selectedSectors.has(analysis.sector));
+    }
 
     // Apply fuzzy search if query exists
     if (searchQuery.trim()) {
@@ -187,7 +233,7 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
     filtered = filtered.filter((analysis) => analysis.slug != null);
 
     return filtered;
-  }, [analyses, dateRangeFilter, searchQuery]);
+  }, [analyses, dateRangeFilter, searchQuery, selectedSectors]);
 
   const dateRangeOptions: Array<{ value: DateRangeFilter; label: string }> = [
     { value: "trailing_2_weeks", label: "Trailing 2 Weeks" },
@@ -216,6 +262,68 @@ export function LatestAnalysesFilter({ analyses }: LatestAnalysesFilterProps) {
               </option>
             ))}
           </select>
+
+          {/* Sector Filter - Multi-Select Dropdown */}
+          <div ref={sectorDropdownRef} className="relative">
+            <button
+              onClick={() => setShowSectorDropdown(!showSectorDropdown)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 transition-colors flex items-center justify-between text-gray-900 font-medium text-sm"
+            >
+              <span className="text-gray-700">
+                {selectedSectors.size === 0 ? 'All Sectors' : `${selectedSectors.size} Sector${selectedSectors.size !== 1 ? 's' : ''} Selected`}
+              </span>
+              <svg
+                className={`w-4 h-4 text-gray-600 transition-transform ${showSectorDropdown ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </button>
+
+            {/* Dropdown Menu */}
+            {showSectorDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+                {/* Select All / Clear All Options */}
+                <div className="sticky top-0 bg-white border-b border-gray-200 p-3 space-y-2">
+                  <button
+                    onClick={() => setSelectedSectors(new Set(sectors))}
+                    className="w-full text-left px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  >
+                    ✓ Select All
+                  </button>
+                  <button
+                    onClick={() => setSelectedSectors(new Set())}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    ✕ Clear All
+                  </button>
+                </div>
+
+                {/* Sector Checkboxes */}
+                <div className="p-2">
+                  {sectors.map((sector) => (
+                    <label
+                      key={sector}
+                      className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-50 cursor-pointer transition-colors group"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSectors.has(sector)}
+                        onChange={() => toggleSector(sector)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                      />
+                      <span className="text-sm text-gray-700 group-hover:text-gray-900 flex-1">{sector}</span>
+                      <span className="text-xs text-gray-400">
+                        {analyses.filter((a) => a.sector === sector).length}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Fuzzy Search Input */}
           <div className="flex-1 relative">

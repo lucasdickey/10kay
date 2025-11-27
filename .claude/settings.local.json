@@ -20,7 +20,8 @@
       "Bash(./scripts/run-migration-009.sh:*)",
       "Bash(chmod:*)",
       "Bash(curl:*)",
-      "Bash(gh issue view:*)"
+      "Bash(gh issue view:*)",
+      "Bash(vercel deploy:*)"
     ]
   },
   "outputStyle": "Explanatory"
