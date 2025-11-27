@@ -19,7 +19,8 @@
       "Bash(psql:*)",
       "Bash(./scripts/run-migration-009.sh:*)",
       "Bash(chmod:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(gh issue view:*)"
     ]
   },
   "outputStyle": "Explanatory"

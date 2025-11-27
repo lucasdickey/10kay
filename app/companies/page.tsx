@@ -24,10 +24,11 @@ export default async function CompaniesPage() {
   ]);
 
   // Calculate some stats
-  const companiesWithData = performance.filter(c => c.priceChange7d !== null).length;
-  const averageChange = performance
-    .filter(c => c.priceChange7d !== null)
-    .reduce((sum, c) => sum + (c.priceChange7d || 0), 0) / (companiesWithData || 1);
+  const companiesWithData = performance.filter(c => c.currentPrice !== null || c.marketCap !== null).length;
+  const companiesWithChange = performance.filter(c => c.priceChange7d !== null);
+  const averageChange = companiesWithChange.length > 0
+    ? companiesWithChange.reduce((sum, c) => sum + (c.priceChange7d || 0), 0) / companiesWithChange.length
+    : 0;
 
   return (
     <div className="min-h-screen bg-white">

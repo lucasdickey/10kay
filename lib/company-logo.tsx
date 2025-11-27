@@ -17,21 +17,46 @@ interface CompanyLogoProps {
 
 /**
  * Get local logo URL for a company ticker
- * Uses locally fetched PNG logos (favicons)
+ * Tries PNG first (real logo), then SVG (generated fallback)
  */
 export function getLogoUrl(ticker: string): string {
   return `/company-logos/${ticker.toLowerCase()}.png`;
 }
 
 /**
+ * Get fallback SVG logo URL
+ */
+export function getSvgLogoUrl(ticker: string): string {
+  return `/company-logos/${ticker.toLowerCase()}.svg`;
+}
+
+/**
  * CompanyLogo component with automatic fallback
+ * Tries PNG first, then SVG, then ticker badge
  */
 export function CompanyLogo({ ticker, domain, size = 48, className = '' }: CompanyLogoProps) {
-  const [imageError, setImageError] = useState(false);
-  const logoUrl = getLogoUrl(ticker);
+  const [pngError, setPngError] = useState(false);
+  const [svgError, setSvgError] = useState(false);
 
-  // Fallback ticker badge (should rarely be needed with local logos)
-  if (imageError) {
+  const pngUrl = getLogoUrl(ticker);
+  const svgUrl = getSvgLogoUrl(ticker);
+
+  // Try SVG if PNG failed
+  if (pngError && !svgError) {
+    return (
+      <Image
+        src={svgUrl}
+        alt={`${ticker} logo`}
+        width={size}
+        height={size}
+        className={`rounded-lg ${className}`}
+        onError={() => setSvgError(true)}
+      />
+    );
+  }
+
+  // Fallback ticker badge if both PNG and SVG fail
+  if (pngError && svgError) {
     return (
       <div
         className={`flex items-center justify-center bg-gradient-to-br from-blue-500 to-blue-600 text-white font-bold rounded-lg ${className}`}
@@ -42,14 +67,15 @@ export function CompanyLogo({ ticker, domain, size = 48, className = '' }: Compa
     );
   }
 
+  // Try PNG first (real logo)
   return (
     <Image
-      src={logoUrl}
+      src={pngUrl}
       alt={`${ticker} logo`}
       width={size}
       height={size}
       className={`rounded-lg ${className}`}
-      onError={() => setImageError(true)}
+      onError={() => setPngError(true)}
     />
   );
 }

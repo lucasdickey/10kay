@@ -24,6 +24,7 @@ interface CompanyPageProps {
 interface CompanyWithAnalyses {
   ticker: string;
   name: string;
+  sector?: string | null;
   domain?: string | null;
   metadata?: CompanyMetadata | null;
   analyses: Analysis[];
@@ -37,8 +38,8 @@ async function getCompanyAnalyses(ticker: string): Promise<CompanyWithAnalyses |
   const upperTicker = ticker.toUpperCase();
 
   // Get company info
-  const companies = await query<{ ticker: string; name: string; metadata: any }>(
-    'SELECT ticker, name, metadata FROM companies WHERE UPPER(ticker) = $1',
+  const companies = await query<{ ticker: string; name: string; sector: string | null; metadata: any }>(
+    'SELECT ticker, name, sector, metadata FROM companies WHERE UPPER(ticker) = $1',
     [upperTicker]
   );
 
@@ -80,6 +81,7 @@ async function getCompanyAnalyses(ticker: string): Promise<CompanyWithAnalyses |
   return {
     ticker: company.ticker,
     name: company.name,
+    sector: company.sector,
     domain: company.metadata?.domain,
     metadata: company.metadata as CompanyMetadata,
     analyses
@@ -138,7 +140,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
   const [performance, aggregateChange, sectorChange] = await Promise.all([
     getCompany7DayPerformance(companyData.ticker),
     getAggregate7DayPerformance(),
-    companyData.metadata?.characteristics?.sector ? getSector7DayPerformance(companyData.metadata.characteristics.sector) : Promise.resolve(null),
+    companyData.sector ? getSector7DayPerformance(companyData.sector) : Promise.resolve(null),
   ]);
 
   return (
@@ -170,7 +172,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             priceChange7d={performance.priceChange7d}
             aggregateChange7d={aggregateChange}
             sectorChange7d={sectorChange}
-            sector={companyData.metadata?.characteristics?.sector || null}
+            sector={companyData.sector || null}
           />
           <CompanyProducts products={companyData.metadata?.products} />
           <CompanyGeography geography={companyData.metadata?.geography} />
