@@ -360,7 +360,7 @@ export function CompaniesFilter({ companies, totalFilingsCount }: CompaniesFilte
                     <div className="pt-3 border-t">
                       <PerformanceIndicator
                         value={company.priceChange7d}
-                        label="7d Change"
+                        label="7d Δ"
                         tooltip="Price change over the past 7 calendar days (Nov 17 vs Nov 24)"
                       />
                     </div>
@@ -371,7 +371,7 @@ export function CompaniesFilter({ companies, totalFilingsCount }: CompaniesFilte
                     <div className="flex flex-nowrap gap-2 pt-2">
                       <ComparisonBadge
                         value={company.vsAggregate}
-                        label="Market"
+                        label="Index"
                         tooltip="Performance vs. the average of all 96 tracked companies"
                       />
                       <ComparisonBadge
