@@ -16,7 +16,10 @@
       "Bash(gh workflow run:*)",
       "Bash(gh run list:*)",
       "Bash(source .env.local:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(./scripts/run-migration-009.sh:*)",
+      "Bash(chmod:*)",
+      "Bash(curl:*)"
     ]
   },
   "outputStyle": "Explanatory"

@@ -188,7 +188,7 @@ export async function getAllCompaniesPerformance(): Promise<CompanyPerformance[]
         c.id as company_id,
         c.ticker,
         c.name as company_name,
-        c.metadata->'characteristics'->>'sector' as sector,
+        c.sector,
         cmd1.price as current_price,
         cmd1.market_cap,
         cmd1.data_date as last_updated,
@@ -209,7 +209,7 @@ export async function getAllCompaniesPerformance(): Promise<CompanyPerformance[]
         ORDER BY cmd2.data_date DESC
         LIMIT 1
       ) cmd2 ON true
-      WHERE c.enabled = true
+      WHERE c.enabled = true AND c.status = 'active'
       ORDER BY c.ticker
     )
     SELECT
