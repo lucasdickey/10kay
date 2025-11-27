@@ -11,13 +11,31 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { CompanyLogo } from '@/lib/company-logo';
 import { CompanyPerformance } from '@/lib/performance';
+import { InfoTooltip } from '@/components/InfoTooltip';
+
+/**
+ * Generates a sector code from the first word of the sector name
+ * Examples: "Semiconductors" → "SEMI", "Consumer Discretionary" → "CONS"
+ */
+function getSectorCode(sector: string): string {
+  if (!sector) return '';
+  return sector.split(' ')[0].substring(0, 4).toUpperCase();
+}
 
 interface CompaniesFilterProps {
   companies: CompanyPerformance[];
   totalFilingsCount: number;
 }
 
-function PerformanceIndicator({ value, label }: { value: number | null; label: string }) {
+function PerformanceIndicator({
+  value,
+  label,
+  tooltip,
+}: {
+  value: number | string | null;
+  label: string;
+  tooltip?: string;
+}) {
   if (value === null) {
     return (
       <div className="text-xs text-gray-400">
@@ -26,14 +44,18 @@ function PerformanceIndicator({ value, label }: { value: number | null; label: s
     );
   }
 
-  const isPositive = value > 0;
-  const isNeutral = value === 0;
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  const isPositive = numValue > 0;
+  const isNeutral = numValue === 0;
 
   return (
     <div className="flex items-center gap-1 text-xs">
-      <span className="text-gray-600">{label}:</span>
+      <span className="text-gray-600">
+        {label}:
+        {tooltip && <InfoTooltip label={label} info={tooltip} iconClassName="w-3 h-3" />}
+      </span>
       <span className={`font-semibold ${isPositive ? 'text-green-600' : isNeutral ? 'text-gray-600' : 'text-red-600'}`}>
-        {isPositive && '+'}{value.toFixed(2)}%
+        {isPositive && '+'}{numValue.toFixed(2)}%
       </span>
       {!isNeutral && (
         <svg
@@ -60,21 +82,33 @@ function PerformanceIndicator({ value, label }: { value: number | null; label: s
   );
 }
 
-function ComparisonBadge({ value, label }: { value: number | null; label: string }) {
+function ComparisonBadge({
+  value,
+  label,
+  tooltip,
+}: {
+  value: number | string | null;
+  label: string;
+  tooltip?: string;
+}) {
   if (value === null) {
     return null;
   }
 
-  const isPositive = value > 0;
-  const absValue = Math.abs(value);
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  const isPositive = numValue > 0;
+  const absValue = Math.abs(numValue);
 
   if (absValue < 0.1) {
     return null; // Don't show if difference is negligible
   }
 
   return (
-    <div className={`text-xs px-2 py-1 rounded ${isPositive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-      {isPositive ? '+' : ''}{value.toFixed(1)}% vs {label}
+    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1 ${isPositive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+      <span>
+        {isPositive ? '+' : ''}{numValue.toFixed(1)}% vs {label}
+      </span>
+      {tooltip && <InfoTooltip label={`${label} Comparison`} info={tooltip} iconClassName="w-3 h-3" />}
     </div>
   );
 }
@@ -122,7 +156,9 @@ export function CompaniesFilter({ companies, totalFilingsCount }: CompaniesFilte
         case 'performance':
           if (a.priceChange7d === null) return 1;
           if (b.priceChange7d === null) return -1;
-          return b.priceChange7d - a.priceChange7d;
+          const aPerf = typeof a.priceChange7d === 'string' ? parseFloat(a.priceChange7d) : a.priceChange7d;
+          const bPerf = typeof b.priceChange7d === 'string' ? parseFloat(b.priceChange7d) : b.priceChange7d;
+          return bPerf - aPerf;
         case 'name':
           return a.companyName.localeCompare(b.companyName);
         default:
@@ -197,23 +233,32 @@ export function CompaniesFilter({ companies, totalFilingsCount }: CompaniesFilte
               <Link
                 key={company.ticker}
                 href={`/${company.ticker}`}
-                className="block bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
+                className="block bg-white border rounded-lg hover:shadow-lg transition-shadow"
               >
                 {/* Company Header */}
-                <div className="flex items-center gap-3 p-4 bg-gray-50 border-b">
+                <div className="flex items-start gap-3 p-4 bg-gray-50 border-b">
                   <CompanyLogo
                     ticker={company.ticker}
                     domain={company.sector || undefined}
                     size={32}
-                    className="flex-shrink-0"
+                    className="flex-shrink-0 mt-1"
                   />
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-bold text-gray-900 truncate">
                       {company.ticker}
                     </h3>
-                    <p className="text-xs text-gray-600 truncate">
-                      {company.companyName}
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <p className="text-xs text-gray-600 truncate flex-1">
+                        {company.companyName}
+                      </p>
+                      {company.sector && (
+                        <InfoTooltip label="Sector" info={company.sector} position="top">
+                          <span className="inline-block px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors">
+                            {getSectorCode(company.sector)}
+                          </span>
+                        </InfoTooltip>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -239,24 +284,27 @@ export function CompaniesFilter({ companies, totalFilingsCount }: CompaniesFilte
                   {/* 7-Day Performance */}
                   {company.priceChange7d !== null && (
                     <div className="pt-3 border-t">
-                      <PerformanceIndicator value={company.priceChange7d} label="7d Change" />
+                      <PerformanceIndicator
+                        value={company.priceChange7d}
+                        label="7d Change"
+                        tooltip="Price change over the past 7 calendar days (Nov 17 vs Nov 24)"
+                      />
                     </div>
                   )}
 
                   {/* Comparisons */}
                   {(company.vsAggregate !== null || company.vsSector !== null) && (
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <ComparisonBadge value={company.vsAggregate} label="Market" />
-                      <ComparisonBadge value={company.vsSector} label="Sector" />
-                    </div>
-                  )}
-
-                  {/* Sector Badge */}
-                  {company.sector && (
-                    <div className="pt-2">
-                      <span className="inline-block px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
-                        {company.sector}
-                      </span>
+                    <div className="flex flex-nowrap gap-2 pt-2">
+                      <ComparisonBadge
+                        value={company.vsAggregate}
+                        label="Market"
+                        tooltip="Performance vs. the average of all 96 tracked companies"
+                      />
+                      <ComparisonBadge
+                        value={company.vsSector}
+                        label="Sector"
+                        tooltip={`Performance vs. other companies in the ${company.sector || 'same sector'}`}
+                      />
                     </div>
                   )}
 

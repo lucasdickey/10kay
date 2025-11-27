@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getEnabledCompanies } from "@/lib/db-preferences";
+import { getAllCompaniesPerformance } from "@/lib/performance";
 
 /**
  * GET /api/companies
- * Fetch all enabled companies for selection
+ * Fetch all enabled companies with 7-day performance metrics and comparisons
  */
 export async function GET() {
   try {
-    const companies = await getEnabledCompanies();
+    const companies = await getAllCompaniesPerformance();
 
     return NextResponse.json({
       success: true,
