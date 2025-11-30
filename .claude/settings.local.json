@@ -21,7 +21,8 @@
       "Bash(chmod:*)",
       "Bash(curl:*)",
       "Bash(gh issue view:*)",
-      "Bash(vercel deploy:*)"
+      "Bash(vercel deploy:*)",
+      "Bash(vercel list:*)"
     ]
   },
   "outputStyle": "Explanatory"
