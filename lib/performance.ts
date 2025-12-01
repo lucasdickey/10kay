@@ -129,41 +129,59 @@ export async function getAggregate7DayPerformance(): Promise<number | null> {
     FROM company_changes
   `);
 
-  return result.length > 0 ? result[0].avg_change : null;
+  if (result.length === 0 || result[0].avg_change === null || result[0].avg_change === undefined) {
+    return null;
+  }
+
+  // Ensure numeric type conversion from NUMERIC PostgreSQL type
+  const value = typeof result[0].avg_change === 'string' ? parseFloat(result[0].avg_change) : Number(result[0].avg_change);
+  return isNaN(value) ? null : value;
 }
 
 /**
  * Get sector-specific 7-day performance
  */
 export async function getSector7DayPerformance(sector: string): Promise<number | null> {
-  const result = await query<{ avg_change: number }>(`
-    WITH company_changes AS (
-      SELECT
-        cmd1.ticker,
-        ((cmd1.price - cmd2.price) / cmd2.price * 100) as change_7d
-      FROM company_market_data cmd1
-      INNER JOIN companies c ON cmd1.company_id = c.id
-      INNER JOIN LATERAL (
-        SELECT price
-        FROM company_market_data cmd2
-        WHERE cmd2.company_id = cmd1.company_id
-          AND cmd2.data_date >= cmd1.data_date - INTERVAL '7 days'
-          AND cmd2.data_date < cmd1.data_date
-        ORDER BY cmd2.data_date DESC
-        LIMIT 1
-      ) cmd2 ON true
-      WHERE cmd1.data_date = (SELECT MAX(data_date) FROM company_market_data)
-        AND c.enabled = true
-        AND c.metadata->'characteristics'->>'sector' = $1
-        AND cmd1.price IS NOT NULL
-        AND cmd2.price IS NOT NULL
-        AND cmd2.price > 0
-    )
-    SELECT AVG(change_7d) as avg_change
-    FROM company_changes
-  `, [sector]);
+  try {
+    const result = await query<{ avg_change: number }>(`
+      WITH company_changes AS (
+        SELECT
+          cmd1.ticker,
+          ((cmd1.price - cmd2.price) / cmd2.price * 100) as change_7d
+        FROM company_market_data cmd1
+        INNER JOIN companies c ON cmd1.company_id = c.id
+        INNER JOIN LATERAL (
+          SELECT price
+          FROM company_market_data cmd2
+          WHERE cmd2.company_id = cmd1.company_id
+            AND cmd2.data_date >= cmd1.data_date - INTERVAL '7 days'
+            AND cmd2.data_date < cmd1.data_date
+          ORDER BY cmd2.data_date DESC
+          LIMIT 1
+        ) cmd2 ON true
+        WHERE cmd1.data_date = (SELECT MAX(data_date) FROM company_market_data)
+          AND c.enabled = true
+          AND c.sector = $1
+          AND cmd1.price IS NOT NULL
+          AND cmd2.price IS NOT NULL
+          AND cmd2.price > 0
+      )
+      SELECT AVG(change_7d) as avg_change
+      FROM company_changes
+    `, [sector]);
 
-  return result.length > 0 ? result[0].avg_change : null;
+    if (result.length === 0 || result[0].avg_change === null || result[0].avg_change === undefined) {
+      return null;
+    }
+
+    // Ensure numeric type conversion from NUMERIC PostgreSQL type
+    const value = typeof result[0].avg_change === 'string' ? parseFloat(result[0].avg_change) : Number(result[0].avg_change);
+    return isNaN(value) ? null : value;
+  } catch (error) {
+    // If query fails (e.g., sector doesn't match), return null gracefully
+    console.error(`Error fetching sector performance for ${sector}:`, error);
+    return null;
+  }
 }
 
 /**
