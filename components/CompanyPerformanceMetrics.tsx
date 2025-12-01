@@ -86,9 +86,13 @@ export function CompanyPerformanceMetrics({
   sector,
 }: CompanyPerformanceMetricsProps) {
   // If no performance data is available, don't render the component
-  if (priceChange7d === null) {
+  if (priceChange7d === null || typeof priceChange7d !== 'number') {
     return null;
   }
+
+  // Ensure numeric types for all performance values
+  const safeAggregateChange = aggregateChange7d !== null && typeof aggregateChange7d === 'number' ? aggregateChange7d : null;
+  const safeSectorChange = sectorChange7d !== null && typeof sectorChange7d === 'number' ? sectorChange7d : null;
 
   return (
     <div className="bg-white border rounded-lg p-6 shadow-sm">
@@ -99,23 +103,23 @@ export function CompanyPerformanceMetrics({
         <PerformanceBar value={priceChange7d} label="7-Day Stock Performance" />
 
         {/* Comparison to aggregate */}
-        {aggregateChange7d !== null && (
+        {safeAggregateChange !== null && (
           <div className="pt-4 border-t">
             <PerformanceBar
               value={priceChange7d}
               label="vs. Market Average"
-              comparison={{ value: aggregateChange7d, label: 'market average' }}
+              comparison={{ value: safeAggregateChange, label: 'market average' }}
             />
           </div>
         )}
 
         {/* Comparison to sector */}
-        {sector && sectorChange7d !== null && (
+        {sector && safeSectorChange !== null && (
           <div className="pt-4 border-t">
             <PerformanceBar
               value={priceChange7d}
               label={`vs. ${sector} Sector`}
-              comparison={{ value: sectorChange7d, label: `${sector} sector` }}
+              comparison={{ value: safeSectorChange, label: `${sector} sector` }}
             />
           </div>
         )}
@@ -124,19 +128,19 @@ export function CompanyPerformanceMetrics({
       {/* Reference values */}
       <div className="mt-6 pt-4 border-t">
         <div className="grid grid-cols-2 gap-4 text-sm">
-          {aggregateChange7d !== null && (
+          {safeAggregateChange !== null && (
             <div className="bg-gray-50 rounded p-3">
               <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Market Avg</div>
-              <div className={`font-semibold ${aggregateChange7d > 0 ? 'text-green-600' : aggregateChange7d < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                {aggregateChange7d > 0 && '+'}{aggregateChange7d.toFixed(2)}%
+              <div className={`font-semibold ${safeAggregateChange > 0 ? 'text-green-600' : safeAggregateChange < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                {safeAggregateChange > 0 && '+'}{safeAggregateChange.toFixed(2)}%
               </div>
             </div>
           )}
-          {sector && sectorChange7d !== null && (
+          {sector && safeSectorChange !== null && (
             <div className="bg-gray-50 rounded p-3">
               <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{sector} Avg</div>
-              <div className={`font-semibold ${sectorChange7d > 0 ? 'text-green-600' : sectorChange7d < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                {sectorChange7d > 0 && '+'}{sectorChange7d.toFixed(2)}%
+              <div className={`font-semibold ${safeSectorChange > 0 ? 'text-green-600' : safeSectorChange < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                {safeSectorChange > 0 && '+'}{safeSectorChange.toFixed(2)}%
               </div>
             </div>
           )}
