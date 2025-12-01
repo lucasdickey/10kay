@@ -154,7 +154,7 @@ export async function getSector7DayPerformance(sector: string): Promise<number |
       ) cmd2 ON true
       WHERE cmd1.data_date = (SELECT MAX(data_date) FROM company_market_data)
         AND c.enabled = true
-        AND c.sector = $1
+        AND c.metadata->'characteristics'->>'sector' = $1
         AND cmd1.price IS NOT NULL
         AND cmd2.price IS NOT NULL
         AND cmd2.price > 0
