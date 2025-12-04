@@ -41,8 +41,8 @@ def generate_content(
         conn = psycopg2.connect(config.database.url)
         generator = BlogGenerator(config, conn, logger)
 
-        # Generate blog post HTML
-        formats = [ContentFormat.BLOG_POST_HTML]
+        # Generate both blog post HTML and email HTML formats for publishing
+        formats = [ContentFormat.BLOG_POST_HTML, ContentFormat.EMAIL_HTML]
 
         results = generator.process_content(
             content_id=content_id,

@@ -278,10 +278,10 @@ def generate_phase(conn, logger, config):
         logger.info(f"Generating formats for content {content_id}")
 
         try:
-            # Generate blog post HTML
-            # Note: Email HTML would use a separate EmailGenerator class
+            # Generate both blog post HTML and email HTML formats for publishing
             formats = [
-                ContentFormat.BLOG_POST_HTML
+                ContentFormat.BLOG_POST_HTML,
+                ContentFormat.EMAIL_HTML
             ]
 
             results = generator.process_content(
