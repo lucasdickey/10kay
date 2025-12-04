@@ -601,6 +601,21 @@ class EmailPublisher(BasePublisher):
                     dry_run=dry_run
                 )
 
+                # Mark as published in database (only if not dry run)
+                if not dry_run and result.status == PublishStatus.SENT:
+                    try:
+                        cursor = self.db_connection.cursor()
+                        cursor.execute("""
+                            UPDATE content
+                            SET published_at = NOW()
+                            WHERE id = %s
+                        """, (item['content_id'],))
+                        self.db_connection.commit()
+                        cursor.close()
+                    except Exception as db_error:
+                        if self.logger:
+                            self.logger.error(f"Failed to update published_at for {item['content_id']}: {db_error}")
+
                 published_count += 1
                 status = "validated" if dry_run else "published"
                 print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) {status} successfully")

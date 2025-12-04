@@ -905,23 +905,38 @@ class BlogGenerator(BaseGenerator):
         try:
             cursor = self.db_connection.cursor()
 
-            cursor.execute("""
-                UPDATE content
-                SET blog_html = %s,
-                    published_at = COALESCE(published_at, NOW()),
-                    updated_at = NOW()
-                WHERE id = %s
-            """, (
-                generated.output,
-                content_id
-            ))
+            # For email format, save as email_html; for blog format, save as blog_html
+            # Do NOT set published_at here - let the publish phase handle that
+            if generated.format == ContentFormat.EMAIL_HTML:
+                cursor.execute("""
+                    UPDATE content
+                    SET email_html = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (
+                    generated.output,
+                    content_id
+                ))
+                format_name = "email HTML"
+            else:
+                # Default: BLOG_POST_HTML
+                cursor.execute("""
+                    UPDATE content
+                    SET blog_html = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (
+                    generated.output,
+                    content_id
+                ))
+                format_name = "blog HTML"
 
             self.db_connection.commit()
             cursor.close()
 
             if self.logger:
                 self.logger.info(
-                    f"Saved blog HTML to database and marked as published",
+                    f"Saved {format_name} to database",
                     extra={'content_id': content_id}
                 )
 
