@@ -323,14 +323,14 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
         FROM content c
         JOIN filings f ON c.filing_id = f.id
         JOIN companies comp ON f.company_id = comp.id
-        WHERE c.published_at IS NOT NULL
+        WHERE c.published_at IS NULL
         AND c.email_html IS NOT NULL
         AND NOT EXISTS (
             SELECT 1 FROM email_deliveries
             WHERE content_id = c.id
             AND status = 'sent'
         )
-        ORDER BY c.published_at DESC
+        ORDER BY c.created_at DESC
         LIMIT 10
     """)
 
