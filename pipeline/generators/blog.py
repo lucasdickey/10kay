@@ -123,11 +123,11 @@ class BlogGenerator(BaseGenerator):
         options: Optional[Dict[str, Any]] = None
     ) -> GeneratedContent:
         """
-        Generate blog post HTML
+        Generate content in specified format
 
         Args:
             content_id: Database ID of content
-            format: Output format (must be BLOG_POST_HTML)
+            format: Output format (BLOG_POST_HTML or EMAIL_HTML)
             options: Format options (include_toc, style)
 
         Returns:
@@ -136,7 +136,7 @@ class BlogGenerator(BaseGenerator):
         Raises:
             GenerationError: If generation fails
         """
-        if format != ContentFormat.BLOG_POST_HTML:
+        if format not in [ContentFormat.BLOG_POST_HTML, ContentFormat.EMAIL_HTML]:
             raise GenerationError(f"Unsupported format: {format}")
 
         options = options or {}
@@ -147,8 +147,11 @@ class BlogGenerator(BaseGenerator):
             # Fetch content
             content = self.fetch_content(content_id)
 
-            # Generate HTML
-            html = self._generate_html(content, include_toc, style)
+            # Generate appropriate HTML based on format
+            if format == ContentFormat.BLOG_POST_HTML:
+                html = self._generate_html(content, include_toc, style)
+            else:  # EMAIL_HTML
+                html = self._generate_email_html(content)
 
             # Calculate metadata
             word_count = len(html.split())
@@ -163,13 +166,13 @@ class BlogGenerator(BaseGenerator):
 
             return GeneratedContent(
                 content_id=content_id,
-                format=ContentFormat.BLOG_POST_HTML,
+                format=format,
                 output=html,
                 metadata=metadata
             )
 
         except Exception as e:
-            raise GenerationError(f"Failed to generate blog post: {e}")
+            raise GenerationError(f"Failed to generate content: {e}")
 
     def _generate_html(
         self,
@@ -285,6 +288,137 @@ class BlogGenerator(BaseGenerator):
 </html>"""
 
         return html
+
+    def _generate_email_html(self, content: Dict[str, Any]) -> str:
+        """Generate email-optimized HTML for newsletter distribution"""
+
+        # Sentiment indicator
+        sentiment = content.get('sentiment_score') or 0
+        sentiment_class = 'positive' if sentiment > 0.5 else 'negative' if sentiment < -0.2 else 'neutral'
+        sentiment_text = 'Positive' if sentiment > 0.5 else 'Negative' if sentiment < -0.2 else 'Neutral'
+
+        # Build sections
+        sections = content.get('deep_sections', [])
+        sections_html = ""
+        for section in sections:
+            if isinstance(section, dict):
+                title = section.get('title', '')
+                section_content = section.get('content', '')
+                sections_html += f"""
+                <tr>
+                    <td style="padding: 0 20px 16px;">
+                        <h3 style="font-size: 18px; font-weight: 600; margin: 0 0 12px; color: #111827;">
+                            {title}
+                        </h3>
+                        <p style="font-size: 14px; line-height: 1.6; color: #4b5563; margin: 0;">
+                            {section_content}
+                        </p>
+                    </td>
+                </tr>
+                """
+
+        # Email-optimized HTML with inline styles
+        email_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{content['deep_headline']} | 10KAY</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; background-color: #f9fafb;">
+    <table cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9fafb;">
+        <tr>
+            <td align="center" style="padding: 20px;">
+                <table cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 24px 20px; border-bottom: 1px solid #e5e7eb;">
+                            <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 8px; color: #111827;">
+                                {content['deep_headline']}
+                            </h1>
+                            <p style="font-size: 12px; color: #666; margin: 0;">
+                                {content['ticker']} | Filed {content['filing_date'].strftime('%b %d, %Y')}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Sentiment Badge -->
+                    <tr>
+                        <td style="padding: 16px 20px;">
+                            <span style="display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; background-color: {'#dcfce7' if sentiment_class == 'positive' else '#fee2e2' if sentiment_class == 'negative' else '#fef3c7'}; color: {'#15803d' if sentiment_class == 'positive' else '#b91c1c' if sentiment_class == 'negative' else '#92400e'};">
+                                {sentiment_text} Sentiment
+                            </span>
+                        </td>
+                    </tr>
+
+                    <!-- Executive Summary (TLDR) -->
+                    <tr>
+                        <td style="padding: 0 20px 16px;">
+                            <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 8px; color: #111827;">Quick Summary</h2>
+                            <p style="font-size: 14px; line-height: 1.6; color: #4b5563; margin: 0;">
+                                {content.get('tldr_summary', '')}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Key Points -->
+                    <tr>
+                        <td style="padding: 0 20px 16px;">
+                            <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px; color: #111827;">Key Points</h3>
+                            {''.join([f"<p style='font-size: 13px; color: #4b5563; margin: 0 0 8px; padding-left: 16px; border-left: 2px solid #0066cc;'><strong>{pt.get('title', '')}</strong>: {pt.get('description', '')}</p>" for pt in content.get('tldr_key_points', [])])}
+                        </td>
+                    </tr>
+
+                    <!-- Deep Dive Sections -->
+                    {sections_html if sections_html else ''}
+
+                    <!-- Bull/Bear Cases -->
+                    <tr>
+                        <td style="padding: 0 20px 16px;">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td width="50%" style="padding-right: 12px;">
+                                        <div style="background-color: #f0f9ff; padding: 12px; border-radius: 4px;">
+                                            <p style="font-size: 12px; font-weight: 600; color: #0369a1; margin: 0 0 4px;">BULL CASE</p>
+                                            <p style="font-size: 13px; color: #4b5563; margin: 0;">
+                                                {content.get('bull_case', 'N/A')}
+                                            </p>
+                                        </div>
+                                    </td>
+                                    <td width="50%" style="padding-left: 12px;">
+                                        <div style="background-color: #fef2f2; padding: 12px; border-radius: 4px;">
+                                            <p style="font-size: 12px; font-weight: 600; color: #b91c1c; margin: 0 0 4px;">BEAR CASE</p>
+                                            <p style="font-size: 13px; color: #4b5563; margin: 0;">
+                                                {content.get('bear_case', 'N/A')}
+                                            </p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 20px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #666;">
+                            <p style="margin: 0;">
+                                <a href="https://10kay.com" style="color: #0066cc; text-decoration: none;">View Full Analysis</a> |
+                                <a href="#" style="color: #0066cc; text-decoration: none;">Unsubscribe</a>
+                            </p>
+                            <p style="margin: 8px 0 0; font-size: 11px;">
+                                © 2025 10KAY. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"""
+
+        return email_html
 
     def _get_css(self, style: str) -> str:
         """Get CSS styles for blog post"""
