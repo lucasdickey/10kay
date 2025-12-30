@@ -366,7 +366,7 @@ class BlogGenerator(BaseGenerator):
                     <tr>
                         <td style="padding: 0 20px 16px;">
                             <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px; color: #111827;">Key Points</h3>
-                            {''.join([f"<p style='font-size: 13px; color: #4b5563; margin: 0 0 8px; padding-left: 16px; border-left: 2px solid #0066cc;'><strong>{pt.get('title', '')}</strong>: {pt.get('description', '')}</p>" for pt in content.get('tldr_key_points', [])])}
+                            {''.join([f"<p style='font-size: 13px; color: #4b5563; margin: 0 0 8px; padding-left: 16px; border-left: 2px solid #0066cc;'>{pt if isinstance(pt, str) else f\"<strong>{pt.get('title', '')}</strong>: {pt.get('description', '')}\"}</p>" if pt else "" for pt in content.get('tldr_key_points', [])])}
                         </td>
                     </tr>
 
