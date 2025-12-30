@@ -297,10 +297,23 @@ class BlogGenerator(BaseGenerator):
         sentiment_class = 'positive' if sentiment > 0.5 else 'negative' if sentiment < -0.2 else 'neutral'
         sentiment_text = 'Positive' if sentiment > 0.5 else 'Negative' if sentiment < -0.2 else 'Neutral'
 
-        # Build sections
-        sections = content.get('deep_sections', [])
+        # Sentiment colors
+        sentiment_bg = '#dcfce7' if sentiment_class == 'positive' else '#fee2e2' if sentiment_class == 'negative' else '#fef3c7'
+        sentiment_color = '#15803d' if sentiment_class == 'positive' else '#b91c1c' if sentiment_class == 'negative' else '#92400e'
+
+        # Build key points HTML
+        key_points_html = ""
+        for pt in content.get('tldr_key_points', []):
+            if isinstance(pt, str):
+                key_points_html += f"<p style='font-size: 13px; color: #4b5563; margin: 0 0 8px; padding-left: 16px; border-left: 2px solid #0066cc;'>{pt}</p>"
+            elif isinstance(pt, dict):
+                title = pt.get('title', '')
+                desc = pt.get('description', '')
+                key_points_html += f"<p style='font-size: 13px; color: #4b5563; margin: 0 0 8px; padding-left: 16px; border-left: 2px solid #0066cc;'><strong>{title}</strong>: {desc}</p>"
+
+        # Build sections HTML
         sections_html = ""
-        for section in sections:
+        for section in content.get('deep_sections', []):
             if isinstance(section, dict):
                 title = section.get('title', '')
                 section_content = section.get('content', '')
@@ -317,62 +330,64 @@ class BlogGenerator(BaseGenerator):
                 </tr>
                 """
 
-        # Email-optimized HTML with inline styles
-        email_html = f"""<!DOCTYPE html>
+        # Build email HTML without f-string to avoid backslash issues
+        headline = content.get('deep_headline', '')
+        ticker = content.get('ticker', '')
+        filing_date = content.get('filing_date')
+        filing_date_str = filing_date.strftime('%b %d, %Y') if filing_date else 'N/A'
+        tldr_summary = content.get('tldr_summary', '')
+        bull_case = content.get('bull_case', 'N/A')
+        bear_case = content.get('bear_case', 'N/A')
+
+        email_html = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{content['deep_headline']} | 10KAY</title>
+    <title>{} | 10KAY</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; background-color: #f9fafb;">
     <table cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9fafb;">
         <tr>
             <td align="center" style="padding: 20px;">
                 <table cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-
                     <!-- Header -->
                     <tr>
                         <td style="padding: 24px 20px; border-bottom: 1px solid #e5e7eb;">
                             <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 8px; color: #111827;">
-                                {content['deep_headline']}
+                                {}
                             </h1>
                             <p style="font-size: 12px; color: #666; margin: 0;">
-                                {content['ticker']} | Filed {content['filing_date'].strftime('%b %d, %Y')}
+                                {} | Filed {}
                             </p>
                         </td>
                     </tr>
-
                     <!-- Sentiment Badge -->
                     <tr>
                         <td style="padding: 16px 20px;">
-                            <span style="display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; background-color: {'#dcfce7' if sentiment_class == 'positive' else '#fee2e2' if sentiment_class == 'negative' else '#fef3c7'}; color: {'#15803d' if sentiment_class == 'positive' else '#b91c1c' if sentiment_class == 'negative' else '#92400e'};">
-                                {sentiment_text} Sentiment
+                            <span style="display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; background-color: {}; color: {};">
+                                {} Sentiment
                             </span>
                         </td>
                     </tr>
-
                     <!-- Executive Summary (TLDR) -->
                     <tr>
                         <td style="padding: 0 20px 16px;">
                             <h2 style="font-size: 16px; font-weight: 600; margin: 0 0 8px; color: #111827;">Quick Summary</h2>
                             <p style="font-size: 14px; line-height: 1.6; color: #4b5563; margin: 0;">
-                                {content.get('tldr_summary', '')}
+                                {}
                             </p>
                         </td>
                     </tr>
-
                     <!-- Key Points -->
                     <tr>
                         <td style="padding: 0 20px 16px;">
                             <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px; color: #111827;">Key Points</h3>
-                            {''.join([f"<p style='font-size: 13px; color: #4b5563; margin: 0 0 8px; padding-left: 16px; border-left: 2px solid #0066cc;'>{pt if isinstance(pt, str) else f\"<strong>{pt.get('title', '')}</strong>: {pt.get('description', '')}\"}</p>" if pt else "" for pt in content.get('tldr_key_points', [])])}
+                            {}
                         </td>
                     </tr>
-
                     <!-- Deep Dive Sections -->
-                    {sections_html if sections_html else ''}
-
+                    {}
                     <!-- Bull/Bear Cases -->
                     <tr>
                         <td style="padding: 0 20px 16px;">
@@ -382,7 +397,7 @@ class BlogGenerator(BaseGenerator):
                                         <div style="background-color: #f0f9ff; padding: 12px; border-radius: 4px;">
                                             <p style="font-size: 12px; font-weight: 600; color: #0369a1; margin: 0 0 4px;">BULL CASE</p>
                                             <p style="font-size: 13px; color: #4b5563; margin: 0;">
-                                                {content.get('bull_case', 'N/A')}
+                                                {}
                                             </p>
                                         </div>
                                     </td>
@@ -390,7 +405,7 @@ class BlogGenerator(BaseGenerator):
                                         <div style="background-color: #fef2f2; padding: 12px; border-radius: 4px;">
                                             <p style="font-size: 12px; font-weight: 600; color: #b91c1c; margin: 0 0 4px;">BEAR CASE</p>
                                             <p style="font-size: 13px; color: #4b5563; margin: 0;">
-                                                {content.get('bear_case', 'N/A')}
+                                                {}
                                             </p>
                                         </div>
                                     </td>
@@ -398,7 +413,6 @@ class BlogGenerator(BaseGenerator):
                             </table>
                         </td>
                     </tr>
-
                     <!-- Footer -->
                     <tr>
                         <td style="padding: 20px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #666;">
@@ -416,7 +430,12 @@ class BlogGenerator(BaseGenerator):
         </tr>
     </table>
 </body>
-</html>"""
+</html>""".format(
+            headline, headline, ticker, filing_date_str,
+            sentiment_bg, sentiment_color, sentiment_text,
+            tldr_summary, key_points_html, sections_html,
+            bull_case, bear_case
+        )
 
         return email_html
 
