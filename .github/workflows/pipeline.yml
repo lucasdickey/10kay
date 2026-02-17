@@ -57,7 +57,11 @@ jobs:
 
           # Use Level 2 parallel orchestration for all phases
           if [ "$PHASE" = "all" ]; then
-            echo "Using Level 2 parallel orchestration (Analyze + Generate in parallel + Publish)"
+            echo "Phase 1: Fetching new SEC filings (sequential)"
+            python3 pipeline/main.py --phase fetch
+
+            echo ""
+            echo "Phase 2-4: Using Level 2 parallel orchestration (Analyze + Generate in parallel + Publish)"
             python3 orchestrate_parallel.py --publish
           elif [ "$PHASE" = "analyze" ]; then
             echo "Running analysis phase with 5 concurrent workers"

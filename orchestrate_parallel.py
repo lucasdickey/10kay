@@ -8,6 +8,7 @@ to reduce total pipeline execution time.
 
 Usage:
     python3 orchestrate_parallel.py                              # Run with default limits (200 each)
+    python3 orchestrate_parallel.py --fetch                      # Also run fetch phase first
     python3 orchestrate_parallel.py --analyze-only               # Only run analyze phase
     python3 orchestrate_parallel.py --generate-only              # Only run generate phase
     python3 orchestrate_parallel.py --publish                    # Also run publish phase after
@@ -25,6 +26,26 @@ import psycopg2
 from datetime import datetime
 
 from pipeline.utils import get_config
+
+
+def start_fetch_phase():
+    """Start the sequential fetch phase to download new SEC filings"""
+    print(f"\n{'='*70}")
+    print("STARTING PHASE 1: FETCH (Sequential - SEC rate limited)")
+    print(f"{'='*70}\n")
+
+    try:
+        process = subprocess.Popen(
+            ['python3', 'pipeline/main.py', '--phase', 'fetch'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        return process
+    except Exception as e:
+        print(f"✗ Failed to start fetch phase: {e}")
+        return None
 
 
 def get_analyze_progress(conn) -> tuple:
@@ -171,6 +192,11 @@ def main():
         description="Pipeline orchestrator with parallel phase execution"
     )
     parser.add_argument(
+        '--fetch',
+        action='store_true',
+        help='Run fetch phase first to download new SEC filings before analyzing'
+    )
+    parser.add_argument(
         '--analyze-only',
         action='store_true',
         help='Only run analyze phase'
@@ -214,6 +240,14 @@ def main():
         process = start_generate_phase(args.generate_limit)
         wait_for_process(process, "Generate Phase")
         return
+
+    # Run fetch phase first if requested (sequential, SEC rate-limited)
+    if args.fetch:
+        print("\nRunning fetch phase first to download new SEC filings...")
+        fetch_process = start_fetch_phase()
+        if fetch_process:
+            wait_for_process(fetch_process, "Fetch Phase")
+        print()
 
     # Start analyze phase
     print("\nMode: PARALLEL EXECUTION (Analyze → auto-trigger Generate → optional Publish)")
