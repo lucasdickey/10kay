@@ -272,78 +272,43 @@ class MarketDataFetcher:
                 self.logger.info("No market data to save")
             return 0
 
-        cursor = self.db_connection.cursor()
-        saved_count = 0
+        from ..db import CompanyRepository, MarketDataRecord, MarketDataRepository
 
+        companies = CompanyRepository(self.db_connection)
+
+        # Resolve tickers first, outside the write transaction. A ticker we do
+        # not track is a skip, not a failure, and should not consume a savepoint.
+        records = []
+        skipped = 0
         for data in market_data_list:
-            try:
-                ticker = data['ticker']
-
-                # Get company_id from ticker
-                cursor.execute(
-                    "SELECT id FROM companies WHERE ticker = %s",
-                    (ticker,)
-                )
-                result = cursor.fetchone()
-
-                if not result:
-                    if self.logger:
-                        self.logger.debug(f"Skipping {ticker} - not in companies table")
-                    continue
-
-                company_id = result[0]
-
-                # Upsert market data
-                cursor.execute("""
-                    INSERT INTO company_market_data (
-                        company_id,
-                        ticker,
-                        price,
-                        market_cap,
-                        volume,
-                        change_percent,
-                        data_date,
-                        fetched_at,
-                        source
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    )
-                    ON CONFLICT (company_id, data_date)
-                    DO UPDATE SET
-                        price = EXCLUDED.price,
-                        market_cap = EXCLUDED.market_cap,
-                        volume = EXCLUDED.volume,
-                        change_percent = EXCLUDED.change_percent,
-                        fetched_at = EXCLUDED.fetched_at
-                    RETURNING id
-                """, (
-                    company_id,
-                    ticker,
-                    data.get('price'),
-                    data.get('market_cap'),
-                    data.get('volume'),
-                    data.get('change_percent'),
-                    data['data_date'],
-                    datetime.now(),
-                    'finnhub'
-                ))
-
-                saved_count += 1
-
-            except Exception as e:
+            ticker = (data.get('ticker') or '').strip()
+            company_id = companies.find_id(ticker) if ticker else None
+            if not company_id:
+                skipped += 1
                 if self.logger:
-                    self.logger.error(
-                        f"Failed to save market data for {data.get('ticker')}",
-                        exception=e
-                    )
+                    self.logger.debug(f"Skipping {ticker or '<blank>'} - not in companies table")
                 continue
 
-        # Commit all changes
-        self.db_connection.commit()
-        cursor.close()
+            records.append(MarketDataRecord(
+                company_id=company_id,
+                ticker=ticker,
+                data_date=data['data_date'],
+                price=data.get('price'),
+                market_cap=data.get('market_cap'),
+                volume=data.get('volume'),
+                change_percent=data.get('change_percent'),
+            ))
+
+        # One transaction, one savepoint per row: a bad row rolls back alone
+        # instead of aborting the transaction and taking every later row with it.
+        stats = MarketDataRepository(self.db_connection).upsert_many(records)
+        saved_count = stats['created'] + stats['updated']
 
         if self.logger:
-            self.logger.info(f"Saved {saved_count} market data records to database")
+            self.logger.info(
+                f"Saved {saved_count} market data records to database",
+                extra={**stats, 'skipped_unknown_ticker': skipped},
+            )
 
         return saved_count
 

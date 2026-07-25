@@ -123,9 +123,10 @@ def main():
         print(f"\n[{i}/{len(filings)}] Processing {ticker} - {filing_type} ({filing_date})...")
 
         try:
-            # Delete existing content
-            print(f"  → Deleting existing content for filing {filing_id}")
-            delete_existing_content(db_connection, filing_id)
+            # No delete: save_to_database() upserts on filing_id and bumps the
+            # version. Deleting first opened a data-loss window -- if the Bedrock
+            # call below failed, the old analysis was already gone and nothing
+            # rewrote it.
 
             # Re-analyze with new prompt (includes bull/bear cases)
             print(f"  → Re-analyzing with updated prompt...")

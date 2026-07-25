@@ -9,7 +9,8 @@ import os
 import json
 from pathlib import Path
 import psycopg2
-from psycopg2.extras import execute_batch
+
+from pipeline.db import connect
 
 # Load DATABASE_URL from environment
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -39,73 +40,57 @@ def seed_companies(conn):
     """Insert companies into database"""
     companies = load_companies()
 
-    print(f"📋 Loading {len(companies)} companies from companies.json")
+    print(f"\U0001F4CB Loading {len(companies)} companies from companies.json")
     print()
 
-    cursor = conn.cursor()
+    from pipeline.db import CompanyRepository, DatabaseError, read_cursor, savepoint, transaction
 
-    # Check existing companies
-    cursor.execute("SELECT ticker FROM companies")
-    existing_tickers = set(row[0] for row in cursor.fetchall())
+    repo = CompanyRepository(conn)
+    created = updated = failed = 0
 
-    new_companies = [c for c in companies if c['ticker'] not in existing_tickers]
-    existing_companies = [c for c in companies if c['ticker'] in existing_tickers]
-
-    if existing_companies:
-        print(f"⏭️  Skipping {len(existing_companies)} existing companies:")
-        for company in existing_companies[:5]:
-            print(f"   • {company['ticker']} - {company['name']}")
-        if len(existing_companies) > 5:
-            print(f"   ... and {len(existing_companies) - 5} more")
-        print()
-
-    if not new_companies:
-        print("✅ All companies already in database!")
-        return 0
-
-    print(f"➕ Inserting {len(new_companies)} new companies:")
-
-    # Prepare insert data
-    insert_data = []
-    for company in new_companies:
-        insert_data.append((
-            company['ticker'],
-            company['name'],
-            company.get('exchange'),  # May not be in all entries
-            company.get('sector'),
-            company.get('enabled', True),
-            json.dumps(company)  # Store full data in metadata
-        ))
-        print(f"   • {company['ticker']} - {company['name']}")
-
-    # Batch insert
-    insert_sql = """
-        INSERT INTO companies (ticker, name, exchange, sector, enabled, metadata)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (ticker) DO NOTHING
-    """
-
-    execute_batch(cursor, insert_sql, insert_data)
-    conn.commit()
+    # Upsert rather than INSERT ... DO NOTHING. The old version skipped every
+    # existing ticker, so edits to companies.json (a renamed company, a new
+    # sector, re-enabling a disabled one) never reached the database even though
+    # the docs describe this script as "sync the database".
+    with transaction(conn):
+        for company in companies:
+            ticker = company['ticker']
+            try:
+                with savepoint(conn):
+                    result = repo.upsert(
+                        ticker=ticker,
+                        name=company['name'],
+                        exchange=company.get('exchange'),
+                        sector=company.get('sector'),
+                        enabled=company.get('enabled', True),
+                        metadata=company,
+                    )
+                if result.created:
+                    created += 1
+                    print(f"   + {ticker} - {company['name']}")
+                else:
+                    updated += 1
+            except DatabaseError as e:
+                failed += 1
+                print(f"   \u2717 {ticker}: {e}")
 
     print()
-    print(f"✅ Successfully inserted {len(new_companies)} companies!")
+    print(f"\u2705 {created} added, {updated} refreshed, {failed} failed")
 
-    # Show stats
-    cursor.execute("SELECT COUNT(*) FROM companies")
-    total = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM companies WHERE enabled = true")
-    enabled = cursor.fetchone()[0]
+    with read_cursor(conn) as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE enabled) AS enabled FROM companies"
+        )
+        stats = cursor.fetchone()
 
     print()
-    print("📊 Database Stats:")
-    print(f"   Total companies: {total}")
-    print(f"   Enabled: {enabled}")
-    print(f"   Disabled: {total - enabled}")
+    print("\U0001F4CA Database Stats:")
+    print(f"   Total companies: {stats['total']}")
+    print(f"   Enabled: {stats['enabled']}")
+    print(f"   Disabled: {stats['total'] - stats['enabled']}")
 
-    cursor.close()
-    return len(new_companies)
+    return created
+
 
 def main():
     """Main seeding function"""
@@ -125,7 +110,7 @@ def main():
     try:
         # Connect to database
         print("🔌 Connecting to database...")
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = connect(DATABASE_URL, application_name='10kay-seed-companies')
         print("✓ Connected")
         print()
 
@@ -149,7 +134,7 @@ def main():
         traceback.print_exc()
         sys.exit(1)
     finally:
-        if 'conn' in locals():
+        if 'conn' in locals() and not conn.closed:
             conn.close()
 
 if __name__ == '__main__':

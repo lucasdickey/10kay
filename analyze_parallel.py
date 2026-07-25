@@ -15,9 +15,9 @@ import sys
 import argparse
 from typing import List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import psycopg2
 from datetime import datetime
 
+from pipeline.db import ConnectionPool, FilingRepository
 from pipeline.utils import get_config, PipelineLogger, setup_root_logger
 from pipeline.analyzers import ClaudeAnalyzer, AnalysisType
 
@@ -27,55 +27,40 @@ def analyze_filing(
     ticker: str,
     filing_type: str,
     config,
-    logger: PipelineLogger
+    logger: PipelineLogger,
+    pool: ConnectionPool,
 ) -> Tuple[str, bool, str]:
     """
-    Analyze a single filing
+    Analyze a single filing.
+
+    Borrows a pooled connection instead of opening one per work item. The old
+    version called ``conn.close()`` only on the success path, so every failed
+    filing leaked a backend; a long backfill eventually exhausted the RDS
+    connection limit and the remaining workers all failed to connect.
 
     Returns:
         (filing_id, success, message)
     """
     try:
-        # Create a new connection for this thread
-        conn = psycopg2.connect(config.database.url)
-        analyzer = ClaudeAnalyzer(config, conn, logger)
-
-        content_id = analyzer.process_filing(
-            filing_id=filing_id,
-            analysis_type=AnalysisType.DEEP_ANALYSIS,
-            skip_existing=True
-        )
-
-        conn.close()
+        with pool.connection() as conn:
+            analyzer = ClaudeAnalyzer(config, conn, logger)
+            content_id = analyzer.process_filing(
+                filing_id=filing_id,
+                analysis_type=AnalysisType.DEEP_ANALYSIS,
+                skip_existing=True,
+            )
 
         if content_id:
             return (filing_id, True, f"✓ {ticker} {filing_type}")
-        else:
-            return (filing_id, False, f"⊘ {ticker} {filing_type} (no content_id)")
+        return (filing_id, False, f"⊘ {ticker} {filing_type} (already analyzed)")
 
     except Exception as e:
-        return (filing_id, False, f"✗ {ticker} {filing_type}: {str(e)[:100]}")
+        return (filing_id, False, f"✗ {ticker} {filing_type}: {str(e)[:150]}")
 
 
-def get_pending_filings(conn, limit: int = 500) -> List[Tuple[str, str, str, str]]:
-    """Get list of pending filings to analyze"""
-    cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT f.id, c.ticker, f.filing_type, c.name
-        FROM filings f
-        JOIN companies c ON f.company_id = c.id
-        WHERE f.status = 'pending'
-        AND NOT EXISTS (
-            SELECT 1 FROM content
-            WHERE filing_id = f.id
-        )
-        ORDER BY f.filing_date DESC
-        LIMIT {limit}
-    """)
-
-    filings = cursor.fetchall()
-    cursor.close()
-    return filings
+def get_pending_filings(conn, limit: int = 500) -> List[dict]:
+    """Pending filings, with ``limit`` bound as a parameter, not interpolated."""
+    return FilingRepository(conn).pending(limit=limit)
 
 
 def main():
@@ -108,9 +93,11 @@ def main():
         print("✗ Workers must be between 1 and 15")
         sys.exit(1)
 
-    # Setup logging
-    root_logger = setup_root_logger()
-    logger = PipelineLogger(root_logger, 'parallel_analyze')
+    # Setup logging. The old call was PipelineLogger(root_logger, 'parallel_analyze'),
+    # which does not match the signature: the Logger object landed in `step`
+    # (a NOT NULL column) and the name landed in `filing_id`.
+    setup_root_logger()
+    logger = PipelineLogger('parallel_analyze')
 
     # Load config
     config = get_config()
@@ -123,11 +110,15 @@ def main():
     print(f"Dry-run: {args.dry_run}")
     print("=" * 70 + "\n")
 
-    # Connect and get pending filings
+    # One pool shared by every worker, sized to the worker count.
     try:
-        conn = psycopg2.connect(config.database.url)
-        pending_filings = get_pending_filings(conn, args.limit)
-        conn.close()
+        pool = ConnectionPool(
+            config.database.url,
+            maxconn=args.workers + 1,
+            application_name='10kay-analyze-parallel',
+        )
+        with pool.connection() as conn:
+            pending_filings = get_pending_filings(conn, args.limit)
     except Exception as e:
         print(f"✗ Failed to connect to database: {e}")
         sys.exit(1)
@@ -140,10 +131,11 @@ def main():
 
     if args.dry_run:
         print("DRY-RUN MODE: Showing filings that would be analyzed:")
-        for i, (filing_id, ticker, filing_type, company_name) in enumerate(pending_filings[:10], 1):
-            print(f"  {i}. {ticker} {filing_type}")
+        for i, filing in enumerate(pending_filings[:10], 1):
+            print(f"  {i}. {filing['ticker']} {filing['filing_type']}")
         if len(pending_filings) > 10:
             print(f"  ... and {len(pending_filings) - 10} more")
+        pool.close()
         return
 
     # Analyze in parallel
@@ -156,13 +148,14 @@ def main():
         futures = {
             executor.submit(
                 analyze_filing,
-                filing_id,
-                ticker,
-                filing_type,
+                filing['filing_id'],
+                filing['ticker'],
+                filing['filing_type'],
                 config,
-                logger
-            ): (filing_id, ticker, filing_type)
-            for filing_id, ticker, filing_type, _ in pending_filings
+                logger,
+                pool,
+            ): filing
+            for filing in pending_filings
         }
 
         # Process completed tasks as they finish
@@ -193,8 +186,14 @@ def main():
     print(f"Avg time per filing: {avg_time:.1f} seconds")
     print("=" * 70 + "\n")
 
+    pool.close()
+    logger.close()
+
     if failed > 0:
+        # Non-zero exit so a scheduled workflow surfaces the failures instead of
+        # reporting a green run that analyzed nothing.
         print(f"⚠ {failed} filings failed to analyze")
+        sys.exit(1)
 
 
 if __name__ == '__main__':

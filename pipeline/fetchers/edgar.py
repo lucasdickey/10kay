@@ -460,63 +460,54 @@ class EdgarFetcher(BaseFetcher):
         if not self.db_connection:
             raise DatabaseError("No database connection available")
 
+        from ..db import (
+            CompanyRepository,
+            DatabaseError as DbError,
+            FilingRecord,
+            FilingRepository,
+            RecordNotFound,
+        )
+
         try:
-            cursor = self.db_connection.cursor()
+            company_id = CompanyRepository(self.db_connection).require_id(filing.ticker)
+        except RecordNotFound as e:
+            raise DatabaseError(str(e)) from e
 
-            # Get company_id from ticker
-            cursor.execute(
-                "SELECT id FROM companies WHERE ticker = %s",
-                (filing.ticker,)
+        # 'Q1'..'Q4' -> 1..4; 'FY' and anything else -> None (a 10-K).
+        fiscal_quarter = None
+        if filing.fiscal_period and filing.fiscal_period.upper().startswith('Q'):
+            digits = filing.fiscal_period[1:].strip()
+            if digits.isdigit():
+                fiscal_quarter = int(digits)
+
+        record = FilingRecord(
+            company_id=company_id,
+            filing_type=filing.filing_type.value,
+            accession_number=filing.accession_number,
+            filing_date=filing.filing_date,
+            edgar_url=filing.document_url,
+            raw_document_url=s3_url,
+            fiscal_year=filing.fiscal_year,
+            fiscal_quarter=fiscal_quarter,
+            status='pending',
+        )
+
+        try:
+            # Idempotent on accession_number: a re-fetch backfills the S3 URL
+            # instead of raising a unique violation, and never resets the status
+            # of a filing that has already been analyzed.
+            result = FilingRepository(self.db_connection).upsert(record)
+        except DbError as e:
+            raise DatabaseError(f"Failed to save filing to database: {e}") from e
+
+        if self.logger:
+            self.logger.info(
+                "Saved filing to database",
+                extra={
+                    'filing_id': result.id,
+                    'accession_number': filing.accession_number,
+                    'created': result.created,
+                },
             )
-            company_row = cursor.fetchone()
-            if not company_row:
-                raise DatabaseError(f"Company {filing.ticker} not found in database")
-            company_id = company_row[0]
 
-            # Convert fiscal_period to fiscal_quarter
-            fiscal_quarter = None
-            if filing.fiscal_period and filing.fiscal_period.startswith('Q'):
-                fiscal_quarter = int(filing.fiscal_period[1])  # Extract number from 'Q1', 'Q2', etc.
-
-            # Insert filing record (matching actual schema)
-            cursor.execute("""
-                INSERT INTO filings (
-                    company_id,
-                    filing_type,
-                    filing_date,
-                    fiscal_year,
-                    fiscal_quarter,
-                    accession_number,
-                    edgar_url,
-                    raw_document_url,
-                    status
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                company_id,
-                filing.filing_type.value,
-                filing.filing_date,
-                filing.fiscal_year,
-                fiscal_quarter,
-                filing.accession_number,
-                filing.document_url,  # EDGAR URL
-                s3_url,  # S3 URL for raw document
-                'pending'  # Initial status - ready for processing
-            ))
-
-            filing_id = cursor.fetchone()[0]
-            self.db_connection.commit()
-            cursor.close()
-
-            if self.logger:
-                self.logger.info(
-                    f"Saved filing to database",
-                    extra={'filing_id': filing_id}
-                )
-
-            return filing_id
-
-        except Exception as e:
-            self.db_connection.rollback()
-            raise DatabaseError(f"Failed to save filing to database: {e}")
+        return result.id

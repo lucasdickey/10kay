@@ -62,10 +62,12 @@ def get_records_missing_bull_bear(db_connection, limit=None):
         ORDER BY f.filing_date DESC
     """
 
+    params = []
     if limit:
-        query += f" LIMIT {limit}"
+        query += " LIMIT %s"
+        params.append(limit)
 
-    cursor.execute(query)
+    cursor.execute(query, params)
 
     columns = [desc[0] for desc in cursor.description]
     results = [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -146,9 +148,10 @@ def main():
         print(f"\n[{i}/{len(records)}] Processing {ticker} - {filing_type} ({filing_date})...")
 
         try:
-            # Delete existing content
-            print(f"  → Deleting existing content for content_id {content_id}")
-            db_connection = delete_existing_content(db_connection, content_id)
+            # No delete: save_to_database() upserts on filing_id and bumps the
+            # version. Deleting first opened a data-loss window -- if the
+            # Bedrock call below failed, the old analysis was already gone and
+            # nothing rewrote it.
 
             # Re-analyze with updated prompt (includes bull/bear cases)
             print(f"  → Re-analyzing filing {filing_id}...")

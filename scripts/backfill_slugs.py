@@ -27,20 +27,13 @@ from dotenv import load_dotenv
 load_dotenv('.env.local')
 
 
-def generate_slug(ticker, filing_type, fiscal_year, fiscal_quarter):
-    """Generate a slug from filing metadata."""
-    ticker_lower = ticker.lower()
-    filing_type_lower = filing_type.lower()
+from pipeline.db import build_slug
 
-    if filing_type == '10-K':
-        period = 'fy'
-    elif filing_type == '10-Q' and fiscal_quarter:
-        period = f'q{fiscal_quarter}'
-    else:
-        # Fallback for other filing types
-        period = 'other'
-
-    return f"{ticker_lower}/{fiscal_year}/{period}/{filing_type_lower}"
+# Slug generation lives in pipeline.db.models.build_slug -- it used to be
+# copy-pasted here, in backfill_missing_slugs.py and in ClaudeAnalyzer. Three
+# copies of the URL scheme meant any change to it silently broke the routes for
+# whichever records were written by the copy that did not get updated.
+generate_slug = build_slug
 
 
 def main():

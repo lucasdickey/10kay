@@ -12,38 +12,38 @@ Can be run manually or via GitHub Actions on a schedule.
 """
 import sys
 import argparse
+from pathlib import Path
 from typing import List, Optional
-import psycopg2
 
-from utils import get_config, PipelineLogger, setup_root_logger
-from fetchers import EdgarFetcher, FilingType
-from fetchers.earnings_calendar import EarningsCalendarFetcher
-from fetchers.market_data import MarketDataFetcher
-from analyzers import ClaudeAnalyzer, AnalysisType
-from generators import BlogGenerator, ContentFormat
-from publishers import EmailPublisher, PublishChannel
+# This module is executed as a script (`python3 pipeline/main.py`), which puts
+# `pipeline/` — not the repo root — on sys.path. Submodules use package-relative
+# imports (`from ..db import ...`), so the repo root has to be importable for
+# `pipeline` to exist as a package. Adding it here keeps both entry points
+# working: `python3 pipeline/main.py` and `from pipeline.main import ...`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from pipeline.db import (  # noqa: E402
+    CompanyRepository,
+    ContentRepository,
+    DatabaseError,
+    DeliveryRecord,
+    DeliveryRepository,
+    FilingRepository,
+    connect,
+    transaction,
+)
+from pipeline.utils import get_config, PipelineLogger, setup_root_logger  # noqa: E402
+from pipeline.fetchers import EdgarFetcher, FilingType  # noqa: E402
+from pipeline.fetchers.earnings_calendar import EarningsCalendarFetcher  # noqa: E402
+from pipeline.fetchers.market_data import MarketDataFetcher  # noqa: E402
+from pipeline.analyzers import ClaudeAnalyzer, AnalysisType  # noqa: E402
+from pipeline.generators import BlogGenerator, ContentFormat  # noqa: E402
+from pipeline.publishers import EmailPublisher, PublishChannel  # noqa: E402
 
 
 def get_enabled_companies(conn) -> List[dict]:
     """Fetch list of enabled companies from database"""
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT ticker, name, metadata
-        FROM companies
-        WHERE enabled = true
-        ORDER BY ticker
-    """)
-
-    companies = []
-    for row in cursor.fetchall():
-        companies.append({
-            'ticker': row[0],
-            'name': row[1],
-            'metadata': row[2] or {}
-        })
-
-    cursor.close()
-    return companies
+    return CompanyRepository(conn).list_enabled()
 
 
 def fetch_phase(conn, logger, config, tickers: Optional[List[str]] = None):
@@ -253,20 +253,7 @@ def generate_phase(conn, logger, config):
     logger.info("PHASE 3: Generating Content")
     logger.info("=" * 60)
 
-    # Get content that needs formatting
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, filing_id
-        FROM content
-        WHERE executive_summary IS NOT NULL
-        AND (blog_html IS NULL OR email_html IS NULL)
-        ORDER BY created_at DESC
-        LIMIT 50
-    """)
-
-    pending_content = cursor.fetchall()
-    cursor.close()
-
+    pending_content = ContentRepository(conn).pending_generation(limit=50)
     logger.info(f"Found {len(pending_content)} content items to format")
 
     # Initialize generator
@@ -274,7 +261,8 @@ def generate_phase(conn, logger, config):
 
     total_generated = 0
 
-    for content_id, filing_id in pending_content:
+    for item in pending_content:
+        content_id = item['content_id']
         logger.info(f"Generating formats for content {content_id}")
 
         try:
@@ -315,28 +303,7 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
     logger.info(f"PHASE 4: Publishing Content (dry_run={dry_run})")
     logger.info("=" * 60)
 
-    # Get content ready to publish (has all formats, not yet sent)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT c.id, c.filing_id, comp.ticker,
-               COALESCE(c.key_takeaways->>'headline', c.executive_summary)
-        FROM content c
-        JOIN filings f ON c.filing_id = f.id
-        JOIN companies comp ON f.company_id = comp.id
-        WHERE c.published_at IS NULL
-        AND c.email_html IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM email_deliveries
-            WHERE content_id = c.id
-            AND status = 'sent'
-        )
-        ORDER BY c.created_at DESC
-        LIMIT 10
-    """)
-
-    ready_content = cursor.fetchall()
-    cursor.close()
-
+    ready_content = ContentRepository(conn).ready_to_publish(limit=10)
     logger.info(f"Found {len(ready_content)} content items ready to publish")
 
     # Initialize publisher
@@ -344,8 +311,9 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
 
     total_published = 0
 
-    for content_id, filing_id, ticker, headline in ready_content:
-        logger.info(f"Publishing: {ticker} - {headline}")
+    for item in ready_content:
+        content_id = item['content_id']
+        logger.info(f"Publishing: {item['ticker']} - {item['headline']}")
 
         try:
             # Publish to email newsletter (respecting free vs paid tiers)
@@ -356,13 +324,28 @@ def publish_phase(conn, logger, config, dry_run: bool = False):
             )
 
             if not dry_run:
-                publisher.save_delivery_record(result)
+                # Delivery record and published_at in one transaction: recording
+                # the send but failing to mark it published would mail the same
+                # analysis again on the next run.
+                with transaction(conn):
+                    DeliveryRepository(conn).record(DeliveryRecord(
+                        content_id=content_id,
+                        status=result.status.value,
+                        sent_at=result.delivered_at,
+                        resend_email_id=result.external_id,
+                        metadata={
+                            'channel': result.channel.value,
+                            'recipient_count': result.recipient_count,
+                        },
+                    ))
+                    ContentRepository(conn).mark_published(content_id)
 
             total_published += 1
             logger.info(f"✓ Published to {result.recipient_count} subscribers")
 
         except Exception as e:
-            logger.error(f"✗ Failed to publish", exception=e)
+            logger.error("✗ Failed to publish", exception=e,
+                         extra={'content_id': content_id})
             continue
 
     logger.info(f"Publish phase complete: {total_published} items published")
@@ -404,8 +387,10 @@ def main():
     config = get_config()
 
     # Connect to database
+    conn = None
+    logger = None
     try:
-        conn = psycopg2.connect(config.database.url)
+        conn = connect(config.database.url, application_name='10kay-pipeline-main')
         logger = PipelineLogger('main', db_connection=conn)
 
         logger.info("=" * 60)
@@ -438,6 +423,10 @@ def main():
         logger.info("Pipeline complete!")
         logger.info("=" * 60)
 
+    except DatabaseError as e:
+        print(f"✗ Pipeline failed (database): {e}")
+        sys.exit(1)
+
     except Exception as e:
         print(f"✗ Pipeline failed: {e}")
         import traceback
@@ -445,8 +434,15 @@ def main():
         sys.exit(1)
 
     finally:
-        if 'conn' in locals():
-            conn.close()
+        # Roll back before closing: exiting with an open transaction leaves the
+        # server tearing down an aborted backend rather than a clean one.
+        if logger is not None:
+            logger.close()
+        if conn is not None and not conn.closed:
+            try:
+                conn.rollback()
+            finally:
+                conn.close()
 
 
 if __name__ == '__main__':

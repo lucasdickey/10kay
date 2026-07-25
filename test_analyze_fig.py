@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Test script to debug FIG filing analysis"""
 
-import psycopg2
 import json
+from pipeline.db import connect
 from pipeline.utils import get_config, PipelineLogger, setup_root_logger
 from pipeline.analyzers import ClaudeAnalyzer, AnalysisType
 
 # Setup
 config = get_config()
-root_logger = setup_root_logger()
-logger = PipelineLogger(root_logger, 'test')
+setup_root_logger()
+logger = PipelineLogger('test_analyze_fig')
 
 # Connect to database
-conn = psycopg2.connect(config.database.url)
+conn = connect(config.database.url, application_name='10kay-test_analyze_fig')
 
 # Get FIG pending filing
 cursor = conn.cursor()
@@ -26,6 +26,7 @@ result = cursor.fetchone()
 if not result:
     print("No pending FIG filings found!")
     cursor.close()
+    logger.close()
     conn.close()
     exit(1)
 
@@ -39,11 +40,14 @@ print("=" * 80)
 analyzer = ClaudeAnalyzer(config, conn, logger)
 try:
     result = analyzer.analyze_filing(filing_id, AnalysisType.DEEP_ANALYSIS)
+    content_id = analyzer.save_to_database(result)
     print('✓ Analysis successful!')
     print(f"Headline: {result.tldr_headline}")
+    print(f"Content ID: {content_id}")
 except Exception as e:
     print(f'✗ Error: {e}')
     import traceback
     traceback.print_exc()
 
+logger.close()
 conn.close()

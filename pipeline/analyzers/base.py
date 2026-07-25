@@ -187,21 +187,23 @@ class BaseAnalyzer(ABC):
             filing_id: Database ID of filing
 
         Returns:
-            True if content exists for this filing, False otherwise
+            True if current content exists for this filing, False otherwise
+
+        Uses ``read_cursor``, which closes the cursor and rolls back on exit, so
+        this check cannot leave the connection idle-in-transaction or leak a
+        cursor when the query fails.
         """
         if not self.db_connection:
             return False
 
-        cursor = self.db_connection.cursor()
-        # Content table doesn't have status column - just check if content exists
-        cursor.execute(
-            "SELECT 1 FROM content WHERE filing_id = %s",
-            (filing_id,)
-        )
-        exists = cursor.fetchone() is not None
-        cursor.close()
+        from ..db import read_cursor
 
-        return exists
+        with read_cursor(self.db_connection) as cursor:
+            cursor.execute(
+                "SELECT 1 FROM content WHERE filing_id = %s AND is_current",
+                (filing_id,)
+            )
+            return cursor.fetchone() is not None
 
     def process_filing(
         self,

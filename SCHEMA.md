@@ -2,6 +2,33 @@
 
 This document consolidates all schema definitions (database tables, JSON structures, and code models) for agent reference and consistency.
 
+> **The migrations are the source of truth, not this file.** Columns documented
+> here that did not exist in `migrations/` have caused real production failures
+> (`subscribers.enabled`, `subscribers.first_name`, `subscribers.topics_subscribed`,
+> `email_deliveries.metadata` — every query touching them raised `UndefinedColumn`).
+> When code and this document disagree, check `migrations/` and fix whichever is wrong.
+
+## Writing data
+
+**Do not issue INSERT/UPDATE from fetchers, analyzers, generators, publishers or
+scripts.** Use `pipeline/db`, which owns every write:
+
+```python
+from pipeline.db import connect, transaction, savepoint, FilingRepository, FilingRecord
+
+conn = connect(config.database.url)
+result = FilingRepository(conn).upsert(FilingRecord(...))   # idempotent
+```
+
+- `pipeline/db/models.py` — typed row contracts that validate before SQL is issued
+- `pipeline/db/repositories.py` — one idempotent upsert per table
+- `pipeline/db/connection.py` — `transaction()`, `savepoint()`, `read_cursor()`, `ConnectionPool`
+- `pipeline/analyzers/synthesis.py` — model response → validated fields
+
+Every repository write is `INSERT ... ON CONFLICT DO UPDATE` against a real
+unique index, so re-running any phase is safe. Batch writes wrap each row in a
+savepoint: one bad row fails alone instead of aborting the transaction.
+
 ## Core Tables
 
 ### `companies` Table
@@ -20,21 +47,37 @@ This document consolidates all schema definitions (database tables, JSON structu
 
 ### `filings` Table
 **Purpose**: SEC filing records (10-K, 10-Q) with processing status
+**Migrations**: 001, 003 (unique index)
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | UUID | Primary key |
 | `company_id` | UUID | Foreign key to companies |
-| `ticker` | VARCHAR(10) | Denormalized ticker for convenience |
 | `filing_type` | VARCHAR(10) | "10-K" or "10-Q" |
+| `accession_number` | VARCHAR(25) | SEC identifier (**unique**) |
+| `filing_date` | DATE | SEC submission date |
+| `period_end_date` | DATE | Fiscal period end date |
 | `fiscal_year` | INTEGER | Fiscal year of filing |
-| `fiscal_quarter` | INTEGER | Quarter (1-4) for 10-Q, null for 10-K |
-| `fiscal_date` | DATE | Fiscal period end date |
-| `filed_date` | DATE | SEC submission date |
+| `fiscal_quarter` | INTEGER | Quarter (1-4) for 10-Q, NULL for 10-K |
+| `edgar_url` | TEXT | EDGAR document URL (NOT NULL) |
 | `raw_document_url` | TEXT | S3 path to original filing |
-| `status` | VARCHAR(20) | Pipeline status: pending → analyzed → generated → published |
-| `created_at` | TIMESTAMPTZ | Record creation timestamp |
-| `updated_at` | TIMESTAMPTZ | Last update timestamp |
+| `status` | VARCHAR(20) | pending → analyzed → generated → published |
+| `processed_at` | TIMESTAMPTZ | When processing finished |
+| `error_message` | TEXT | Last failure reason |
+| `created_at` / `updated_at` | TIMESTAMPTZ | Timestamps |
+
+There is **no** `ticker`, `fiscal_date` or `filed_date` column — join `companies`
+for the ticker and use `period_end_date` / `filing_date`.
+
+**Two unique keys**, and a write can collide with either:
+
+| Index | Columns | Collides when |
+|-------|---------|---------------|
+| `filings_accession_number_key` | `accession_number` | the same filing is re-fetched |
+| `idx_filings_unique` | `company_id, filing_type, fiscal_year, COALESCE(fiscal_quarter, 0)` | an **amended** filing brings a new accession for an existing period |
+
+`FilingRepository.upsert()` handles both; the second is why a plain
+`ON CONFLICT (accession_number)` is not sufficient.
 
 ### `content` Table
 **Purpose**: Analyzed and formatted content for each filing
@@ -46,7 +89,7 @@ This document consolidates all schema definitions (database tables, JSON structu
 | `company_id` | UUID | FK to companies |
 | `version` | INTEGER | Content version number |
 | `is_current` | BOOLEAN | Whether this is the latest version |
-| `slug` | VARCHAR | URL slug (unique): "nvda/2025/q3/10-q" |
+| `slug` | VARCHAR(255) | URL slug (**unique**): "nvda/2025/q3/10-q" |
 | `executive_summary` | TEXT | TLDR summary (2-3 sentences) |
 | `key_takeaways` | JSONB | Structured analysis metadata |
 | `deep_dive_opportunities` | TEXT | Opportunities section |
@@ -58,6 +101,10 @@ This document consolidates all schema definitions (database tables, JSON structu
 | `published_at` | TIMESTAMPTZ | When published to subscribers |
 | `created_at` | TIMESTAMPTZ | When analysis created |
 | `updated_at` | TIMESTAMPTZ | When last updated |
+
+Unique index `idx_content_filing_current` on `filing_id WHERE is_current`
+(migration 010) gives `ContentRepository.upsert_analysis()` its conflict target:
+one live analysis per filing, superseded versions retained with `is_current = false`.
 
 ### key_takeaways JSONB Structure
 ```json
@@ -74,37 +121,70 @@ This document consolidates all schema definitions (database tables, JSON structu
   "sentiment": 0.8,
   "bull_case": "Dominant AI infrastructure position with expanding margins",
   "bear_case": "Data center constraints may delay customer deployments",
-  "model": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "sections": [{"title": "...", "content": "..."}],
+  "conclusion": "Forward-looking synthesis",
+  "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
   "tokens": 7104,
-  "duration": 3.45
+  "duration": 3.45,
+  "analyzed_at": "2025-11-20T14:03:11",
+  "synthesis": {
+    "repaired_json": true,
+    "missing_fields": ["conclusion"],
+    "coerced_fields": [],
+    "warnings": ["response truncated at max_tokens"]
+  }
 }
+```
+
+`synthesis` is present only when normalization had to repair or infer something.
+Query it to find analyses worth regenerating:
+
+```sql
+SELECT slug, key_takeaways->'synthesis' AS issues
+FROM content
+WHERE is_current AND key_takeaways ? 'synthesis'
+ORDER BY created_at DESC;
 ```
 
 ### `subscribers` Table
 **Purpose**: Email newsletter subscriber list
+**Migrations**: 002, 007_enhance_subscriber_preferences
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | UUID | Primary key |
-| `email` | VARCHAR | Email address (unique) |
-| `first_name` | VARCHAR | Subscriber first name |
-| `subscription_tier` | VARCHAR | "free" or "paid" |
-| `enabled` | BOOLEAN | Whether subscribed |
-| `topics_subscribed` | JSONB | Array of tickers subscribed to |
-| `created_at` | TIMESTAMPTZ | Subscription date |
+| `email` | VARCHAR(255) | Email address (unique) |
+| `clerk_user_id` | VARCHAR(255) | Clerk auth ID (unique, NULL for email-only) |
+| `subscription_tier` | VARCHAR(20) | "free" or "paid" |
+| `subscription_status` | VARCHAR(20) | "active", "canceled", "past_due", ... |
+| `stripe_customer_id` | VARCHAR(255) | Stripe customer |
+| `stripe_subscription_id` | VARCHAR(255) | Stripe subscription |
+| `email_enabled` | BOOLEAN | Whether email delivery is on (007) |
+| `email_frequency` | VARCHAR(20) | "daily", "weekly", "off" |
+| `content_preference` | VARCHAR(20) | "tldr" or "full" (007) |
+| `delivery_time` | TIME | Preferred send time (007) |
+| `interested_companies` | UUID[] | Company IDs followed; empty/NULL = all |
+| `subscribed_at` | TIMESTAMPTZ | Subscription date |
+| `unsubscribed_at` | TIMESTAMPTZ | NULL while subscribed |
+| `last_email_sent_at` | TIMESTAMPTZ | Last send |
+
+There is **no** `enabled`, `first_name` or `topics_subscribed` column. Use
+`email_enabled`, derive a greeting from `email`, and read `interested_companies`.
 
 ### `email_deliveries` Table
 **Purpose**: Track email sends via Resend API
+**Migrations**: 002, 010 (`metadata`)
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | UUID | Primary key |
 | `content_id` | UUID | FK to content sent |
-| `subscriber_id` | UUID | FK to subscriber |
-| `status` | VARCHAR | "sent", "bounced", "complained" |
+| `subscriber_id` | UUID | FK to subscriber (NULL for batch-level records) |
+| `status` | VARCHAR(20) | "sent", "delivered", "opened", "clicked", "bounced", "failed" |
 | `sent_at` | TIMESTAMPTZ | When sent |
-| `resend_email_id` | VARCHAR | Resend API message ID |
-| `metadata` | JSONB | Additional delivery data |
+| `resend_email_id` | VARCHAR(255) | Resend API message ID |
+| `opened_at` / `clicked_at` | TIMESTAMPTZ | Engagement timestamps |
+| `metadata` | JSONB | Channel details — **added in migration 010** |
 
 ---
 
@@ -201,8 +281,14 @@ Examples: "nvda/2025/q3/10-q", "aapl/2024/fy/10-k"
 SELECT f.id, f.filing_type, f.fiscal_year
 FROM filings f
 WHERE f.status = 'pending'
-ORDER BY f.filed_date DESC
+  AND NOT EXISTS (SELECT 1 FROM content c WHERE c.filing_id = f.id AND c.is_current)
+ORDER BY f.filing_date DESC
 ```
+
+The `NOT EXISTS` guard matters: a crash between writing content and updating the
+status leaves a filing at `pending` with its analysis already stored, and without
+the guard the next run pays Bedrock for it again. Prefer
+`FilingRepository.pending()` over hand-writing this.
 
 ### Get ready-to-publish content
 ```sql

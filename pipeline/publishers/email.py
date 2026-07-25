@@ -64,41 +64,47 @@ class EmailPublisher(BasePublisher):
         if not self.db_connection:
             raise FetchError("No database connection available")
 
+        from ..db import ContentRepository, DatabaseError as DbError, read_cursor
+
+        # Fetched as a dict: the previous version selected six columns and then
+        # read row[6], so this method raised IndexError on every call and the
+        # publish phase could never load its content.
         try:
-            cursor = self.db_connection.cursor()
+            with read_cursor(self.db_connection) as cursor:
+                cursor.execute("""
+                    SELECT
+                        COALESCE(c.key_takeaways->>'headline', c.executive_summary) AS headline,
+                        c.email_html,
+                        c.slug,
+                        co.id   AS company_id,
+                        co.ticker,
+                        co.name AS company_name,
+                        f.filing_type,
+                        f.fiscal_year,
+                        f.fiscal_quarter
+                    FROM content c
+                    JOIN filings f    ON c.filing_id = f.id
+                    JOIN companies co ON f.company_id = co.id
+                    WHERE c.id = %s
+                """, (content_id,))
+                row = cursor.fetchone()
+        except DbError as e:
+            raise FetchError(f"Failed to fetch content {content_id}: {e}") from e
 
-            cursor.execute("""
-                SELECT
-                    COALESCE(c.key_takeaways->>'headline', c.executive_summary),
-                    c.email_html,
-                    co.ticker,
-                    co.name as company_name,
-                    f.filing_type,
-                    f.fiscal_year
-                FROM content c
-                JOIN filings f ON c.filing_id = f.id
-                JOIN companies co ON f.company_id = co.id
-                WHERE c.id = %s
-            """, (content_id,))
+        if not row:
+            raise FetchError(f"Content {content_id} not found")
 
-            row = cursor.fetchone()
-            cursor.close()
+        content = dict(row)
+        quarter = content.get('fiscal_quarter')
+        content['fiscal_period'] = f"Q{quarter}" if quarter else 'FY'
 
-            if not row:
-                raise FetchError(f"Content {content_id} not found")
+        if not content.get('email_html'):
+            raise FetchError(
+                f"Content {content_id} ({content.get('ticker')}) has no email_html; "
+                "run the generate phase first"
+            )
 
-            return {
-                'headline': row[0],
-                'email_html': row[1],
-                'ticker': row[2],
-                'company_name': row[3],
-                'filing_type': row[4],
-                'fiscal_period': row[5],
-                'fiscal_year': row[6]
-            }
-
-        except Exception as e:
-            raise FetchError(f"Failed to fetch content: {e}")
+        return content
 
     def get_audience(
         self,
@@ -106,14 +112,10 @@ class EmailPublisher(BasePublisher):
         filter: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get target audience for email newsletter
+        Get the target audience for the email newsletter.
 
-        Args:
-            channel: Distribution channel (must be EMAIL_NEWSLETTER)
-            filter: Optional audience filters (tier, enabled, topics)
-
-        Returns:
-            List of subscriber dictionaries
+        Supported filters: ``tier`` ('free' / 'paid') and ``company_id``, which
+        respects each subscriber's ``interested_companies`` list.
 
         Raises:
             FetchError: If fetching fails
@@ -124,58 +126,39 @@ class EmailPublisher(BasePublisher):
         if not self.db_connection:
             raise FetchError("No database connection available")
 
+        from ..db import DatabaseError as DbError, SubscriberRepository
+
         filter = filter or {}
 
         try:
-            cursor = self.db_connection.cursor()
+            rows = SubscriberRepository(self.db_connection).active(
+                tier=filter.get('tier'),
+                company_id=filter.get('company_id'),
+            )
+        except DbError as e:
+            raise FetchError(f"Failed to fetch audience: {e}") from e
 
-            # Build query with filters
-            query = """
-                SELECT
-                    id,
-                    email,
-                    first_name,
-                    subscription_tier,
-                    topics_subscribed
-                FROM subscribers
-                WHERE enabled = true
-            """
-            params = []
+        subscribers = [
+            {
+                'id': str(row['id']),
+                'email': row['email'],
+                # subscribers has no first_name column; derive a greeting from
+                # the local part rather than selecting a column that does not exist.
+                'first_name': (row['email'] or '').split('@')[0],
+                'tier': row.get('subscription_tier') or 'free',
+                'content_preference': row.get('content_preference') or 'tldr',
+                'topics': row.get('interested_companies') or [],
+            }
+            for row in rows
+        ]
 
-            # Filter by tier
-            if 'tier' in filter:
-                query += " AND subscription_tier = %s"
-                params.append(filter['tier'])
+        if self.logger:
+            self.logger.info(
+                f"Found {len(subscribers)} subscribers",
+                extra={'filter': filter},
+            )
 
-            # Filter by topics (interested in specific companies)
-            if 'topics' in filter:
-                query += " AND topics_subscribed @> %s::jsonb"
-                params.append(json.dumps(filter['topics']))
-
-            cursor.execute(query, params)
-
-            subscribers = []
-            for row in cursor.fetchall():
-                subscribers.append({
-                    'id': row[0],
-                    'email': row[1],
-                    'first_name': row[2],
-                    'tier': row[3],
-                    'topics': row[4] or []
-                })
-
-            cursor.close()
-
-            if self.logger:
-                self.logger.info(
-                    f"Found {len(subscribers)} subscribers",
-                    extra={'filter': filter}
-                )
-
-            return subscribers
-
-        except Exception as e:
-            raise FetchError(f"Failed to fetch audience: {e}")
+        return subscribers
 
     def publish(
         self,
@@ -442,126 +425,92 @@ class EmailPublisher(BasePublisher):
                 )
             return None
 
-    def save_delivery_record(self, result: PublishResult):
+    def save_delivery_record(self, result: PublishResult) -> str:
         """
-        Save email delivery records to database
+        Record an email send in ``email_deliveries``.
 
-        Args:
-            result: PublishResult to save
+        This method never worked: it inserted into a ``metadata`` column that
+        migration 002 did not create, so every call raised UndefinedColumn and
+        no send was ever tracked. Migration 010 adds the column; the write now
+        goes through DeliveryRepository, which validates the record first.
 
-        Raises:
-            DatabaseError: If save fails
+        Returns:
+            The delivery record's UUID.
         """
         if not self.db_connection:
             raise DatabaseError("No database connection available")
 
+        from ..db import (
+            DatabaseError as DbError,
+            DeliveryRecord,
+            DeliveryRepository,
+        )
+
+        record = DeliveryRecord(
+            content_id=result.content_id,
+            subscriber_id=None,  # batch-level record; per-subscriber rows TBD
+            status=result.status.value,
+            sent_at=result.delivered_at,
+            resend_email_id=result.external_id,
+            metadata={
+                **(result.metadata or {}),
+                'channel': result.channel.value,
+                'recipient_count': result.recipient_count,
+                'error_message': result.error_message,
+            },
+        )
+
         try:
-            cursor = self.db_connection.cursor()
+            delivery_id = DeliveryRepository(self.db_connection).record(record)
+        except DbError as e:
+            raise DatabaseError(f"Failed to save delivery record: {e}") from e
 
-            # Insert email delivery record for batch
-            # In a real implementation, we'd insert individual records per subscriber
-            # For now, we'll create a single batch record
+        if self.logger:
+            self.logger.info(
+                "Saved email delivery record",
+                extra={
+                    'delivery_id': delivery_id,
+                    'content_id': result.content_id,
+                    'recipients': result.recipient_count,
+                },
+            )
 
-            cursor.execute("""
-                INSERT INTO email_deliveries (
-                    content_id,
-                    subscriber_id,
-                    status,
-                    sent_at,
-                    resend_email_id,
-                    metadata
-                )
-                VALUES (%s, NULL, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                result.content_id,
-                result.status.value,
-                result.delivered_at,
-                result.external_id,
-                json.dumps(result.metadata) if result.metadata else None
-            ))
-
-            delivery_id = cursor.fetchone()[0]
-            self.db_connection.commit()
-            cursor.close()
-
-            if self.logger:
-                self.logger.info(
-                    f"Saved email delivery record",
-                    extra={
-                        'delivery_id': delivery_id,
-                        'content_id': result.content_id,
-                        'recipients': result.recipient_count
-                    }
-                )
-
-        except Exception as e:
-            self.db_connection.rollback()
-            raise DatabaseError(f"Failed to save delivery record: {e}")
+        return delivery_id
 
     def count_ready_content(self) -> int:
+        """Count current content with email HTML that has not been published."""
+        if not self.db_connection:
+            raise DatabaseError("No database connection available")
+
+        from ..db import ContentRepository, DatabaseError as DbError
+
+        try:
+            return ContentRepository(self.db_connection).count_ready_to_publish()
+        except DbError as e:
+            raise DatabaseError(f"Failed to count ready content: {e}") from e
+
+    def get_ready_content(
+        self,
+        limit: Optional[int] = None,
+        tier: str = 'all',
+    ) -> List[Dict[str, Any]]:
         """
-        Count the number of content items ready for publishing
+        Content ready to publish.
 
-        Returns:
-            Number of content records with status='generated'
-
-        Raises:
-            DatabaseError: If database query fails
+        The query also excludes anything with a 'sent' delivery record, so a run
+        that crashed after sending but before setting ``published_at`` does not
+        mail the same analysis to every subscriber twice. ``tier`` filters the
+        audience at send time, not the content selection.
         """
         if not self.db_connection:
             raise DatabaseError("No database connection available")
 
-        try:
-            cursor = self.db_connection.cursor()
-            # Content is ready for publishing if it has email HTML and hasn't been published yet
-            cursor.execute("SELECT COUNT(*) FROM content WHERE email_html IS NOT NULL AND published_at IS NULL")
-            count = cursor.fetchone()[0]
-            cursor.close()
-            return count
-        except Exception as e:
-            raise DatabaseError(f"Failed to count ready content: {e}")
-
-    def get_ready_content(self, limit: Optional[int] = None, tier: str = 'all') -> List[Dict[str, Any]]:
-        """
-        Get content ready for publishing from database
-
-        Args:
-            limit: Maximum number of items to return (None = all)
-            tier: Subscriber tier to filter by ('all', 'free', 'paid')
-
-        Returns:
-            List of content dictionaries with keys: content_id, filing_id, ticker, filing_type
-
-        Raises:
-            DatabaseError: If database query fails
-        """
-        if not self.db_connection:
-            raise DatabaseError("No database connection available")
+        from ..db import ContentRepository, DatabaseError as DbError
 
         try:
-            cursor = self.db_connection.cursor()
-
-            query = """
-                SELECT c.id as content_id, f.id as filing_id, co.ticker, f.filing_type
-                FROM content c
-                JOIN filings f ON c.filing_id = f.id
-                JOIN companies co ON f.company_id = co.id
-                WHERE c.email_html IS NOT NULL AND c.published_at IS NULL
-                ORDER BY c.created_at DESC
-            """
-
-            if limit:
-                query += f" LIMIT {limit}"
-
-            cursor.execute(query)
-            columns = ['content_id', 'filing_id', 'ticker', 'filing_type']
-            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            cursor.close()
-
-            return items
-        except Exception as e:
-            raise DatabaseError(f"Failed to get ready content: {e}")
+            return ContentRepository(self.db_connection).ready_to_publish(limit=limit)
+        except DbError as e:
+            raise DatabaseError(f"Failed to get ready content: {e}") from e
 
     def publish_batch(self, limit: Optional[int] = None, tier: str = 'all', dry_run: bool = False, workers: int = 1) -> Dict[str, int]:
         """
@@ -583,47 +532,61 @@ class EmailPublisher(BasePublisher):
             raise DatabaseError("No database connection available")
 
         items = self.get_ready_content(limit=limit, tier=tier)
-        published_count = 0
-        failed_count = 0
+        stats = {'published': 0, 'failed': 0, 'total': len(items)}
 
         for idx, item in enumerate(items, 1):
+            label = f"{item['ticker']} ({item['filing_type']})"
             try:
-                # Build audience filter based on tier
-                audience_filter = None
-                if tier != 'all':
-                    audience_filter = {'tier': tier}
+                audience_filter = {'tier': tier} if tier != 'all' else None
 
-                # Publish to EMAIL_NEWSLETTER channel
                 result = self.publish(
                     item['content_id'],
                     channel=PublishChannel.EMAIL_NEWSLETTER,
                     audience_filter=audience_filter,
-                    dry_run=dry_run
+                    dry_run=dry_run,
                 )
 
-                # Mark as published in database (only if not dry run)
                 if not dry_run and result.status == PublishStatus.SENT:
-                    try:
-                        cursor = self.db_connection.cursor()
-                        cursor.execute("""
-                            UPDATE content
-                            SET published_at = NOW()
-                            WHERE id = %s
-                        """, (item['content_id'],))
-                        self.db_connection.commit()
-                        cursor.close()
-                    except Exception as db_error:
-                        if self.logger:
-                            self.logger.error(f"Failed to update published_at for {item['content_id']}: {db_error}")
+                    # Record the delivery and mark published in one transaction.
+                    # These were two independent commits, so a crash between
+                    # them left content that had been mailed but still looked
+                    # unpublished -- and would be mailed again next run.
+                    from ..db import (
+                        ContentRepository,
+                        DeliveryRecord,
+                        DeliveryRepository,
+                        transaction,
+                    )
 
-                published_count += 1
-                status = "validated" if dry_run else "published"
-                print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) {status} successfully")
+                    with transaction(self.db_connection):
+                        DeliveryRepository(self.db_connection).record(
+                            DeliveryRecord(
+                                content_id=item['content_id'],
+                                status=result.status.value,
+                                sent_at=result.delivered_at,
+                                resend_email_id=result.external_id,
+                                metadata={
+                                    'channel': result.channel.value,
+                                    'recipient_count': result.recipient_count,
+                                    'tier': tier,
+                                },
+                            )
+                        )
+                        ContentRepository(self.db_connection).mark_published(
+                            item['content_id']
+                        )
+
+                stats['published'] += 1
+                state = "validated" if dry_run else "published"
+                print(f"  [{idx}/{len(items)}] \u2713 {label} {state} successfully")
             except Exception as e:
-                failed_count += 1
-                error_msg = str(e)[:200]  # Truncate long errors
-                print(f"  [{idx}/{len(items)}] ✗ {item['ticker']} ({item['filing_type']}) - {error_msg}")
+                stats['failed'] += 1
+                print(f"  [{idx}/{len(items)}] \u2717 {label} - {str(e)[:200]}")
                 if self.logger:
-                    self.logger.error(f"Failed to publish {item['ticker']}: {e}")
+                    self.logger.error(
+                        f"Failed to publish {label}",
+                        exception=e,
+                        extra={'content_id': item['content_id']},
+                    )
 
-        return {'published': published_count, 'failed': failed_count}
+        return stats
