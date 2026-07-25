@@ -2,6 +2,43 @@
 
 **⚠️ SCHEMA REFERENCE**: For complete and up-to-date database schema definitions, JSON structures, Python dataclasses, and common queries, see **[SCHEMA.md](./SCHEMA.md)**. This document provides a single source of truth for all schema definitions across code, database, and data layers.
 
+## ⚠️ Writing data: use `pipeline/db`
+
+**Never issue `INSERT`/`UPDATE` directly from a fetcher, analyzer, generator,
+publisher or script.** All writes go through the data access layer:
+
+| Module | Responsibility |
+|--------|----------------|
+| `pipeline/db/connection.py` | `connect()`, `transaction()`, `savepoint()`, `read_cursor()`, `ConnectionPool` |
+| `pipeline/db/models.py` | Typed row contracts that validate before SQL is issued |
+| `pipeline/db/repositories.py` | One idempotent upsert per table |
+| `pipeline/db/errors.py` | `DatabaseError` / `TransientDatabaseError` / `IntegrityError` / `RecordNotFound` |
+| `pipeline/analyzers/synthesis.py` | Model response → validated, normalized fields |
+
+```python
+from pipeline.db import connect, transaction, savepoint, FilingRepository, FilingRecord
+
+conn = connect(config.database.url)
+result = FilingRepository(conn).upsert(FilingRecord(...))   # insert or refresh
+```
+
+Rules this enforces:
+
+- **Every write is idempotent.** `INSERT ... ON CONFLICT DO UPDATE` against a
+  real unique index, so re-running any phase is safe.
+- **Batch loops use savepoints.** One bad row rolls back alone. Without this, a
+  single failure aborts the transaction and psycopg2 rejects every later row in
+  the batch with `InFailedSqlTransaction`.
+- **Related writes share a transaction.** Content + filing status; delivery
+  record + `published_at`. A crash between them used to leave inconsistent state
+  that cost a duplicate Bedrock call or a duplicate email.
+- **Logging never commits.** `PipelineLogger` writes `processing_logs` on its own
+  autocommit connection, so a log line inside a `save_to_database()` cannot
+  commit the caller's in-flight work.
+- **`LIMIT` is a bind parameter**, never string-interpolated.
+
+Run `python3 tests/run_all.py` after touching this layer (see `tests/README.md`).
+
 ## Deployment
 
 **Platform:** Vercel
@@ -127,8 +164,19 @@ python3 pipeline/main.py --phase analyze
 
 **AI Model Configuration:**
 - Model: Claude Sonnet 4.5 (us.anthropic.claude-sonnet-4-5-20250929-v1:0)
-- Max Tokens: 4096
-- Temperature: 0.7
+- Max Tokens: 16384 (`AWS_BEDROCK_MAX_TOKENS`)
+- Temperature: 0.3 (`AWS_BEDROCK_TEMPERATURE`)
+
+The deep-analysis prompt asks for a 2000-3000 word document; at the previous
+4096-token ceiling the response was truncated mid-JSON on essentially every run.
+`pipeline/analyzers/synthesis.py` repairs a truncated response rather than
+discarding the analysis, and records what it had to repair in
+`key_takeaways.synthesis` so the damage is queryable:
+
+```sql
+SELECT slug, key_takeaways->'synthesis' FROM content
+WHERE is_current AND key_takeaways ? 'synthesis';
+```
 
 ### Phase 3: Generate (Content Formatting)
 **File:** `pipeline/generators/blog.py`
@@ -162,6 +210,10 @@ python3 pipeline/main.py --phase publish [--dry-run]
 6. Record delivery tracking in `email_deliveries` table
 
 **Dry Run Mode:** `--dry-run` flag validates without sending
+
+The delivery record and `published_at` are written in one transaction, and the
+ready-to-publish query excludes content that already has a `sent` delivery — so
+a crash mid-publish cannot mail the same analysis to everyone twice.
 
 ## Complete Command Reference
 

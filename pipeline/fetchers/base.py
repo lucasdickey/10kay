@@ -165,15 +165,14 @@ class BaseFetcher(ABC):
         if not self.db_connection:
             return False
 
-        cursor = self.db_connection.cursor()
-        cursor.execute(
-            "SELECT 1 FROM filings WHERE accession_number = %s",
-            (accession_number,)
-        )
-        exists = cursor.fetchone() is not None
-        cursor.close()
+        from ..db import read_cursor
 
-        return exists
+        with read_cursor(self.db_connection) as cursor:
+            cursor.execute(
+                "SELECT 1 FROM filings WHERE accession_number = %s",
+                (accession_number,)
+            )
+            return cursor.fetchone() is not None
 
     def process_company(
         self,

@@ -8,10 +8,20 @@ import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import boto3
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 import re
 import html
 
+from ..db import (
+    ContentRecord,
+    ContentRepository,
+    DatabaseError as DbError,
+    FilingRepository,
+    RecordNotFound,
+    build_slug,
+    transaction,
+)
 from .base import (
     BaseAnalyzer,
     AnalysisResult,
@@ -20,6 +30,42 @@ from .base import (
     FetchError,
     DatabaseError
 )
+from .synthesis import (
+    SynthesisError,
+    SynthesisReport,
+    extract_json_object,
+    normalize_analysis,
+)
+
+#: Bedrock error codes worth retrying. Anything else (AccessDenied,
+#: ValidationException, ResourceNotFound) will fail identically on retry, so
+#: retrying only delays the failure and burns the run's time budget.
+RETRYABLE_BEDROCK_ERRORS = {
+    'ThrottlingException',
+    'TooManyRequestsException',
+    'ServiceUnavailableException',
+    'InternalServerException',
+    'ModelTimeoutException',
+    'ModelNotReadyException',
+}
+
+
+def _parse_s3_url(s3_url: str) -> tuple:
+    """
+    Split ``s3://bucket/key`` into ``(bucket, key)``.
+
+    The old inline version did ``s3_url[5:].split('/', 1)`` and indexed
+    ``parts[1]`` unguarded, so a malformed URL raised IndexError instead of
+    saying what was wrong with it.
+    """
+    if not s3_url or not s3_url.startswith('s3://'):
+        raise FetchError(f"Not an S3 URL: {s3_url!r}")
+
+    remainder = s3_url[5:]
+    bucket, separator, key = remainder.partition('/')
+    if not bucket or not separator or not key:
+        raise FetchError(f"S3 URL {s3_url!r} is missing a bucket or key")
+    return bucket, key
 
 
 class ClaudeAnalyzer(BaseAnalyzer):
@@ -28,25 +74,30 @@ class ClaudeAnalyzer(BaseAnalyzer):
 
     Uses AWS Bedrock to analyze SEC filings with Claude Sonnet 4.5.
     Generates both TLDR (free tier) and deep analysis (paid tier).
+
+    Parsing lives in ``synthesis.py`` and persistence in ``pipeline.db``; this
+    class is responsible only for talking to S3 and Bedrock and stitching the
+    two together.
     """
 
     def __init__(self, config, db_connection=None, logger=None):
         """Initialize Claude analyzer with AWS Bedrock client"""
         super().__init__(config, db_connection, logger)
 
-        # Debug: Log AWS configuration (with redacted credentials)
-        print(f"DEBUG: AWS Region: {config.aws.region}")
-        print(f"DEBUG: S3 Filings Bucket: {config.aws.s3_filings_bucket}")
-        print(f"DEBUG: AWS Access Key ID: {'***' if config.aws.access_key_id else 'NOT SET'}")
-        print(f"DEBUG: AWS Secret Access Key: {'***' if config.aws.secret_access_key else 'NOT SET'}")
-        print(f"DEBUG: Bedrock Model ID: {config.aws.bedrock_model_id}")
+        # Bedrock's default read timeout is 60s; a deep analysis routinely runs
+        # longer, and a timeout mid-generation is indistinguishable from a hang.
+        boto_config = BotoConfig(
+            read_timeout=900,
+            connect_timeout=30,
+            retries={'max_attempts': 0},  # retries are handled in _call_bedrock
+        )
 
-        # Initialize Bedrock client
         self.bedrock_client = boto3.client(
             'bedrock-runtime',
             region_name=config.aws.region,
             aws_access_key_id=config.aws.access_key_id,
-            aws_secret_access_key=config.aws.secret_access_key
+            aws_secret_access_key=config.aws.secret_access_key,
+            config=boto_config,
         )
 
         # Initialize S3 client for fetching filings
@@ -58,12 +109,37 @@ class ClaudeAnalyzer(BaseAnalyzer):
         )
 
         self.model_id = config.aws.bedrock_model_id
+        self.max_tokens = getattr(config.aws, 'bedrock_max_tokens', 16384)
+        self.temperature = getattr(config.aws, 'bedrock_temperature', 0.3)
+
+        # Repositories are resolved from self.db_connection on each use rather
+        # than cached here: several backfill scripts reconnect mid-run and
+        # reassign `analyzer.db_connection`, which would leave cached
+        # repositories bound to a closed connection.
 
         if self.logger:
             self.logger.info(
-                f"Initialized ClaudeAnalyzer",
-                extra={'model_id': self.model_id}
+                "Initialized ClaudeAnalyzer",
+                extra={
+                    'model_id': self.model_id,
+                    'max_tokens': self.max_tokens,
+                    'region': config.aws.region,
+                    'bucket': config.aws.s3_filings_bucket,
+                },
             )
+
+    def _require_repos(self):
+        """
+        Build repositories bound to the *current* connection.
+
+        Fails with a clear message rather than an AttributeError on None.
+        """
+        if self.db_connection is None:
+            raise DatabaseError("ClaudeAnalyzer requires a database connection")
+        return (
+            FilingRepository(self.db_connection),
+            ContentRepository(self.db_connection),
+        )
 
     def fetch_filing_content(self, filing_id: str) -> str:
         """
@@ -78,52 +154,44 @@ class ClaudeAnalyzer(BaseAnalyzer):
         Raises:
             FetchError: If fetching fails
         """
-        if not self.db_connection:
-            raise FetchError("No database connection available")
+        filings, _ = self._require_repos()
 
         try:
-            # Get filing S3 URL from database
-            cursor = self.db_connection.cursor()
-            cursor.execute(
-                "SELECT raw_document_url FROM filings WHERE id = %s",
-                (filing_id,)
+            context = filings.get_context(filing_id)
+        except RecordNotFound as e:
+            raise FetchError(str(e)) from e
+        except DbError as e:
+            raise FetchError(f"Failed to look up filing {filing_id}: {e}") from e
+
+        s3_url = context.get('raw_document_url')
+        if not s3_url:
+            raise FetchError(
+                f"Filing {filing_id} ({context.get('ticker')}) has no raw_document_url; "
+                "the fetch phase did not complete for it"
             )
 
-            row = cursor.fetchone()
-            cursor.close()
+        bucket, key = _parse_s3_url(s3_url)
 
-            if not row:
-                raise FetchError(f"Filing {filing_id} not found")
-
-            s3_url = row[0]
-
-            if not s3_url:
-                raise FetchError(f"No S3 URL found for filing {filing_id}")
-
-            # Parse S3 URL (s3://bucket/key)
-            if not s3_url.startswith('s3://'):
-                raise FetchError(f"Invalid S3 URL: {s3_url}")
-
-            parts = s3_url[5:].split('/', 1)
-            bucket = parts[0]
-            key = parts[1]
-
-            # Download from S3
+        try:
             response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            content = response['Body'].read().decode('utf-8')
-
-            if self.logger:
-                self.logger.debug(
-                    f"Fetched {len(content)} chars from S3",
-                    extra={'filing_id': filing_id}
-                )
-
-            return content
-
+            raw = response['Body'].read()
         except ClientError as e:
-            raise FetchError(f"Failed to fetch from S3: {e}")
-        except Exception as e:
-            raise FetchError(f"Failed to fetch filing content: {e}")
+            raise FetchError(f"Failed to fetch {s3_url} from S3: {e}") from e
+
+        # SEC filings are not reliably UTF-8; a stray byte used to abort the
+        # whole analysis with a UnicodeDecodeError.
+        content = raw.decode('utf-8', errors='replace')
+
+        if not content.strip():
+            raise FetchError(f"Filing {filing_id} is empty in S3 at {s3_url}")
+
+        if self.logger:
+            self.logger.debug(
+                f"Fetched {len(content)} chars from S3",
+                extra={'filing_id': filing_id}
+            )
+
+        return content
 
     def _extract_html_tables(self, content: str) -> str:
         """
@@ -479,135 +547,122 @@ Respond with only valid JSON, no additional text."""
 
     def _call_bedrock(self, prompt: str) -> Dict[str, Any]:
         """
-        Call AWS Bedrock with Claude model
+        Call AWS Bedrock with the Claude model.
 
-        Args:
-            prompt: Prompt text
-
-        Returns:
-            Response from Claude
+        Returns a dict with ``text``, token counts, ``duration`` and
+        ``stop_reason``. ``stop_reason == 'max_tokens'`` is surfaced rather than
+        swallowed: it is the signal that the response is truncated, and the
+        caller records it as a data-quality flag on the stored analysis.
 
         Raises:
-            AnalysisError: If API call fails
+            AnalysisError: If the API call fails
         """
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
         start_time = time.time()
+        response = self._invoke_with_retry(request_body)
+        duration = time.time() - start_time
 
         try:
-            # Build request body for Claude Sonnet 4.5
-            request_body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 4096,
-                "temperature": 0.7,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            }
-
-            # Call Bedrock with retry logic
-            max_retries = 3
-            retry_delay = 1  # seconds
-            last_exception = None
-
-            for attempt in range(max_retries):
-                try:
-                    response = self.bedrock_client.invoke_model(
-                        modelId=self.model_id,
-                        body=json.dumps(request_body),
-                        contentType='application/json',
-                        accept='application/json'
-                    )
-                    break  # Success - exit retry loop
-
-                except Exception as e:
-                    last_exception = e
-                    if attempt < max_retries - 1:
-                        # Exponential backoff with jitter
-                        wait_time = retry_delay * (2 ** attempt) + (time.time() % 1)
-                        if self.logger:
-                            self.logger.warning(
-                                f"Bedrock API call failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time:.1f}s",
-                                extra={'error': str(e)}
-                            )
-                        time.sleep(wait_time)
-                    else:
-                        # Final attempt failed
-                        raise AnalysisError(f"Bedrock API failed after {max_retries} attempts: {str(e)}")
-
-            # Parse response
             response_body = json.loads(response['body'].read())
+        except (ValueError, KeyError) as e:
+            raise AnalysisError(f"Bedrock returned an unreadable envelope: {e}") from e
 
-            duration = time.time() - start_time
+        usage = response_body.get('usage', {}) or {}
+        prompt_tokens = usage.get('input_tokens', 0)
+        completion_tokens = usage.get('output_tokens', 0)
+        stop_reason = response_body.get('stop_reason')
 
-            # Debug: Print full response to stderr
-            import sys
-            print(f"\n=== DEBUG: Full Bedrock Response ===", file=sys.stderr)
-            print(f"Response keys: {list(response_body.keys())}", file=sys.stderr)
-            print(f"Full response: {response_body}", file=sys.stderr)
-            print(f"=== END DEBUG ===\n", file=sys.stderr)
+        content_blocks = response_body.get('content') or []
+        text = ''.join(
+            block.get('text', '')
+            for block in content_blocks
+            if isinstance(block, dict) and block.get('type', 'text') == 'text'
+        )
 
-            # Debug: Log full response structure
-            if self.logger:
-                self.logger.info(
-                    f"Full Bedrock response structure",
-                    extra={
-                        'response_keys': list(response_body.keys()),
-                        'response_body_sample': str(response_body)[:500]
-                    }
+        if not text.strip():
+            raise AnalysisError(
+                "Bedrock returned no text content "
+                f"(stop_reason={stop_reason!r}, blocks={len(content_blocks)})"
+            )
+
+        if self.logger:
+            self.logger.info(
+                "Bedrock call completed",
+                extra={
+                    'duration_seconds': round(duration, 2),
+                    'prompt_tokens': prompt_tokens,
+                    'completion_tokens': completion_tokens,
+                    'stop_reason': stop_reason,
+                },
+            )
+            if stop_reason == 'max_tokens':
+                self.logger.warning(
+                    "Response hit the max_tokens ceiling and is truncated",
+                    extra={'max_tokens': self.max_tokens},
                 )
 
-            # Extract usage stats
-            usage = response_body.get('usage', {})
-            prompt_tokens = usage.get('input_tokens', 0)
-            completion_tokens = usage.get('output_tokens', 0)
+        return {
+            'text': text,
+            'prompt_tokens': prompt_tokens,
+            'completion_tokens': completion_tokens,
+            'duration': duration,
+            'stop_reason': stop_reason,
+        }
 
-            if self.logger:
-                self.logger.info(
-                    f"Bedrock API call completed",
-                    extra={
-                        'duration_seconds': round(duration, 2),
-                        'prompt_tokens': prompt_tokens,
-                        'completion_tokens': completion_tokens,
-                        'total_tokens': prompt_tokens + completion_tokens
-                    }
+    def _invoke_with_retry(self, request_body: Dict[str, Any]):
+        """
+        Invoke the model, retrying only errors that can succeed on retry.
+
+        The previous loop retried every exception three times, including
+        AccessDeniedException and ValidationException — turning a
+        misconfiguration into a slow failure and, under throttling, into a
+        thundering herd because the backoff had no real jitter.
+        """
+        attempts = max(1, getattr(self.config, 'max_retries', 3))
+        base_delay = getattr(self.config, 'retry_delay', 2.0)
+        last_error: Optional[BaseException] = None
+
+        for attempt in range(1, attempts + 1):
+            try:
+                return self.bedrock_client.invoke_model(
+                    modelId=self.model_id,
+                    body=json.dumps(request_body),
+                    contentType='application/json',
+                    accept='application/json',
                 )
+            except ClientError as e:
+                code = e.response.get('Error', {}).get('Code', '')
+                last_error = e
+                if code not in RETRYABLE_BEDROCK_ERRORS:
+                    raise AnalysisError(f"Bedrock error {code}: {e}") from e
+            except Exception as e:  # network-level failures are worth a retry
+                last_error = e
 
-            # Extract text from response
-            content_blocks = response_body.get('content', [])
-            if not content_blocks:
-                if self.logger:
-                    self.logger.error(
-                        f"No content blocks in response",
-                        extra={'response_body': response_body}
-                    )
-                raise AnalysisError("No content in Bedrock response")
+            if attempt == attempts:
+                break
 
-            text = content_blocks[0].get('text', '')
+            # Full jitter: sleep uniformly in [0, base * 2^n]. Without jitter,
+            # parallel workers throttled at the same moment retry in lockstep
+            # and re-throttle each other.
+            import random
+            delay = random.uniform(0, base_delay * (2 ** (attempt - 1)))
+            if self.logger:
+                self.logger.warning(
+                    f"Bedrock call failed (attempt {attempt}/{attempts}), "
+                    f"retrying in {delay:.1f}s",
+                    extra={'error': str(last_error)[:300]},
+                )
+            time.sleep(delay)
 
-            if not text:
-                if self.logger:
-                    self.logger.error(
-                        f"Empty text in content block",
-                        extra={
-                            'content_blocks': content_blocks,
-                            'first_block': content_blocks[0] if content_blocks else None
-                        }
-                    )
-                raise AnalysisError("Empty text response from Claude")
-
-            return {
-                'text': text,
-                'prompt_tokens': prompt_tokens,
-                'completion_tokens': completion_tokens,
-                'duration': duration
-            }
-
-        except ClientError as e:
-            raise AnalysisError(f"Bedrock API error: {e}")
-        except Exception as e:
-            raise AnalysisError(f"Failed to call Bedrock: {e}")
+        raise AnalysisError(
+            f"Bedrock call failed after {attempts} attempts: {last_error}"
+        )
 
     def analyze_filing(
         self,
@@ -633,153 +688,105 @@ Respond with only valid JSON, no additional text."""
                 extra={'filing_id': filing_id, 'analysis_type': analysis_type.value}
             )
 
+        filings, _ = self._require_repos()
+        deep = analysis_type != AnalysisType.QUICK_SUMMARY
+
+        # One round trip for everything the prompt and the slug need.
         try:
-            # Get filing metadata
-            cursor = self.db_connection.cursor()
-            cursor.execute("""
-                SELECT c.ticker, f.filing_type, f.fiscal_year, f.fiscal_quarter,
-                       f.filing_date, c.name as company_name
-                FROM filings f
-                JOIN companies c ON f.company_id = c.id
-                WHERE f.id = %s
-            """, (filing_id,))
+            context = filings.get_context(filing_id)
+        except RecordNotFound as e:
+            raise AnalysisError(str(e)) from e
+        except DbError as e:
+            raise AnalysisError(f"Could not load filing {filing_id}: {e}") from e
 
-            row = cursor.fetchone()
-            cursor.close()
+        filing_date = context.get('filing_date')
+        filing_metadata = {
+            'ticker': context['ticker'],
+            'filing_type': context['filing_type'],
+            'fiscal_year': context['fiscal_year'],
+            'fiscal_period': context['fiscal_period'],
+            'filing_date': filing_date.isoformat() if filing_date else 'unknown',
+            'company_name': context.get('company_name') or context['ticker'],
+        }
 
-            if not row:
-                raise AnalysisError(f"Filing {filing_id} not found")
+        content = self.fetch_filing_content(filing_id)
+        sections = self.extract_relevant_sections(content)
 
-            # Convert fiscal_quarter back to fiscal_period format
-            fiscal_quarter = row[3]
-            fiscal_period = f'Q{fiscal_quarter}' if fiscal_quarter else 'FY'
+        if not sections:
+            raise AnalysisError(
+                f"No usable text extracted from filing {filing_id} "
+                f"({filing_metadata['ticker']} {filing_metadata['filing_type']})"
+            )
 
-            filing_metadata = {
-                'ticker': row[0],
-                'filing_type': row[1],
-                'fiscal_year': row[2],
-                'fiscal_period': fiscal_period,
-                'filing_date': row[4].isoformat(),
-                'company_name': row[5]
-            }
+        prompt = self._build_analysis_prompt(filing_metadata, sections, analysis_type)
+        response = self._call_bedrock(prompt)
 
-            # Fetch filing content
-            content = self.fetch_filing_content(filing_id)
-
-            # Extract relevant sections
-            sections = self.extract_relevant_sections(content)
-
-            # Build prompt
-            prompt = self._build_analysis_prompt(filing_metadata, sections, analysis_type)
-
-            # Call Claude
-            response = self._call_bedrock(prompt)
-
-            # Parse JSON response
-            try:
-                analysis_data = json.loads(response['text'])
-            except json.JSONDecodeError:
-                # Try to extract JSON from markdown code blocks
-                json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', response['text'], re.DOTALL)
-                if json_match:
-                    try:
-                        analysis_data = json.loads(json_match.group(1))
-                    except json.JSONDecodeError as e:
-                        if self.logger:
-                            self.logger.error(
-                                f"Failed to parse JSON from markdown code block",
-                                extra={
-                                    'filing_id': filing_id,
-                                    'response_preview': response['text'][:500],
-                                    'error': str(e)
-                                }
-                            )
-                        raise AnalysisError(f"Failed to parse JSON response from Claude: {e}")
-                else:
-                    # Log the actual response for debugging data quality issues
-                    if self.logger:
-                        self.logger.error(
-                            f"Claude returned non-JSON response (possible invalid filing)",
-                            extra={
-                                'filing_id': filing_id,
-                                'company': filing_metadata.get('ticker'),
-                                'filing_type': filing_metadata.get('filing_type'),
-                                'response': response['text'][:1000]
-                            }
-                        )
-                    raise AnalysisError(f"Failed to parse JSON response from Claude: {response['text'][:200]}")
-
-            # Build AnalysisResult
-            if analysis_type == AnalysisType.QUICK_SUMMARY:
-                result = AnalysisResult(
-                    filing_id=filing_id,
-                    tldr_headline=analysis_data['headline'],
-                    tldr_summary=analysis_data['summary'],
-                    tldr_key_points=analysis_data['key_points'],
-                    key_metrics=analysis_data.get('key_metrics'),
-                    sentiment_score=analysis_data.get('sentiment_score'),
-                    bull_case=analysis_data.get('bull_case'),
-                    bear_case=analysis_data.get('bear_case'),
-                    model_version=self.model_id,
-                    prompt_tokens=response['prompt_tokens'],
-                    completion_tokens=response['completion_tokens'],
-                    analysis_duration_seconds=response['duration']
-                )
-            else:
-                # Deep analysis includes both TLDR and deep content
-                tldr = analysis_data.get('tldr', {})
-                result = AnalysisResult(
-                    filing_id=filing_id,
-                    # TLDR (for free tier users) - now from dedicated tldr section
-                    tldr_headline=analysis_data['headline'],
-                    tldr_summary=tldr.get('summary', analysis_data['intro'][:500]),  # Fallback to intro if no tldr
-                    tldr_key_points=tldr.get('key_points', [s['title'] for s in analysis_data['sections'][:3]]),  # Fallback to sections
-                    # Deep analysis (for paid tier)
-                    deep_headline=analysis_data['headline'],
-                    deep_intro=analysis_data['intro'],
-                    deep_sections=analysis_data['sections'],
-                    deep_conclusion=analysis_data['conclusion'],
-                    key_metrics=analysis_data.get('key_metrics'),
-                    sentiment_score=analysis_data.get('sentiment_score'),
-                    bull_case=analysis_data.get('bull_case'),
-                    bear_case=analysis_data.get('bear_case'),
-                    risk_factors=analysis_data.get('risk_factors'),
-                    opportunities=analysis_data.get('opportunities'),
-                    model_version=self.model_id,
-                    prompt_tokens=response['prompt_tokens'],
-                    completion_tokens=response['completion_tokens'],
-                    analysis_duration_seconds=response['duration']
-                )
-
+        # Parse and normalize. Both steps raise SynthesisError with the reason
+        # and a response preview, instead of a bare JSONDecodeError.
+        try:
+            data, repaired = extract_json_object(response['text'])
+            normalized, report = normalize_analysis(data, deep=deep, repaired=repaired)
+        except SynthesisError as e:
             if self.logger:
-                self.logger.info(
-                    f"Analysis complete",
+                self.logger.error(
+                    "Could not synthesize a usable analysis from the model response",
                     extra={
                         'filing_id': filing_id,
-                        'tokens': response['prompt_tokens'] + response['completion_tokens']
-                    }
+                        'ticker': filing_metadata['ticker'],
+                        'filing_type': filing_metadata['filing_type'],
+                        'stop_reason': response.get('stop_reason'),
+                        'response_preview': response['text'][:600],
+                    },
                 )
+            raise AnalysisError(f"Synthesis failed for filing {filing_id}: {e}") from e
 
-            return result
+        if response.get('stop_reason') == 'max_tokens':
+            report.warnings.append('response truncated at max_tokens')
 
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Analysis failed", exception=e, extra={'filing_id': filing_id})
-            raise AnalysisError(f"Failed to analyze filing: {e}")
+        if self.logger and not report.is_clean:
+            self.logger.warning(
+                "Analysis stored with data-quality flags",
+                extra={
+                    'filing_id': filing_id,
+                    'ticker': filing_metadata['ticker'],
+                    **report.to_dict(),
+                },
+            )
 
-    def _generate_slug(self, ticker: str, filing_type: str, fiscal_year: int, fiscal_quarter: Optional[int]) -> str:
-        """Generate a URL-safe slug for the content record"""
-        ticker_lower = ticker.lower()
-        filing_type_lower = filing_type.lower()
+        result = AnalysisResult(
+            filing_id=filing_id,
+            tldr_headline=normalized['headline'],
+            tldr_summary=normalized['summary'],
+            tldr_key_points=normalized['key_points'],
+            deep_headline=normalized['headline'] if deep else None,
+            deep_intro=normalized['intro'] if deep else None,
+            deep_sections=normalized['sections'] if deep else None,
+            deep_conclusion=normalized['conclusion'] if deep else None,
+            key_metrics=normalized['key_metrics'],
+            sentiment_score=normalized['sentiment_score'],
+            bull_case=normalized['bull_case'],
+            bear_case=normalized['bear_case'],
+            risk_factors=normalized['risk_factors'],
+            opportunities=normalized['opportunities'],
+            model_version=self.model_id,
+            prompt_tokens=response['prompt_tokens'],
+            completion_tokens=response['completion_tokens'],
+            analysis_duration_seconds=response['duration'],
+        )
+        # Carried to save_to_database so the flags land in key_takeaways.
+        self._last_report = report
 
-        if filing_type == '10-K':
-            period = 'fy'
-        elif filing_type == '10-Q' and fiscal_quarter:
-            period = f'q{fiscal_quarter}'
-        else:
-            period = 'other'
+        if self.logger:
+            self.logger.info(
+                "Analysis complete",
+                extra={
+                    'filing_id': filing_id,
+                    'tokens': response['prompt_tokens'] + response['completion_tokens'],
+                    'sections': len(normalized['sections']),
+                },
+            )
 
-        return f"{ticker_lower}/{fiscal_year}/{period}/{filing_type_lower}"
+        return result
 
     def save_to_database(
         self,
@@ -787,206 +794,186 @@ Respond with only valid JSON, no additional text."""
         status: str = 'published'
     ) -> str:
         """
-        Save analysis result to database
+        Save an analysis and advance the filing's status, atomically.
 
-        Args:
-            result: AnalysisResult to save
-            status: Content status
+        Everything -- the content upsert and the ``filings.status`` update --
+        runs in one transaction. Previously the content insert was committed
+        before the status update was even issued, so a crash in between left a
+        filing marked ``pending`` with content already written, and the next run
+        paid Bedrock for it a second time.
+
+        The write is idempotent: re-analyzing a filing updates the existing
+        current content row and bumps its version rather than colliding on the
+        unique slug.
 
         Returns:
-            Database ID (UUID) of created content record
-
-        Raises:
-            DatabaseError: If save fails
+            Database ID (UUID) of the content record
         """
-        if not self.db_connection:
-            raise DatabaseError("No database connection available")
+        filings, contents = self._require_repos()
 
         try:
-            cursor = self.db_connection.cursor()
+            context = filings.get_context(result.filing_id)
+        except RecordNotFound as e:
+            raise DatabaseError(str(e)) from e
 
-            # Get company_id and filing metadata from filing_id
-            cursor.execute(
-                "SELECT company_id, ticker FROM filings f JOIN companies c ON f.company_id = c.id WHERE f.id = %s",
-                (result.filing_id,)
-            )
-            row = cursor.fetchone()
-            if not row:
-                raise DatabaseError(f"Filing {result.filing_id} not found")
-            company_id, ticker = row
+        slug = build_slug(
+            context['ticker'],
+            context['filing_type'],
+            context['fiscal_year'],
+            context['fiscal_quarter'],
+        )
 
-            # Get additional filing info for slug generation
-            cursor.execute(
-                "SELECT filing_type, fiscal_year, fiscal_quarter FROM filings WHERE id = %s",
-                (result.filing_id,)
-            )
-            filing_row = cursor.fetchone()
-            if not filing_row:
-                raise DatabaseError(f"Filing metadata not found for {result.filing_id}")
-            filing_type, fiscal_year, fiscal_quarter = filing_row
+        # Deep sections are stored as one markdown block in deep_dive_strategy;
+        # the original structure is preserved in key_takeaways so renderers can
+        # reconstruct headings without re-parsing markdown.
+        strategy = ''
+        for section in (result.deep_sections or []):
+            strategy += f"## {section.get('title', 'Section')}\n\n{section.get('content', '')}\n\n"
+        strategy = strategy.strip() or (result.deep_intro or '')
 
-            # Generate slug
-            slug = self._generate_slug(ticker, filing_type, fiscal_year, fiscal_quarter)
-
-            # Map AnalysisResult to existing content table schema
-            # Combine deep analysis sections into text blocks
-            deep_dive_strategy = ""
-            if result.deep_sections:
-                for section in result.deep_sections:
-                    deep_dive_strategy += f"## {section['title']}\n\n{section['content']}\n\n"
-
-            # Insert content record with slug
-            cursor.execute("""
-                INSERT INTO content (
-                    filing_id,
-                    company_id,
-                    slug,
-                    executive_summary,
-                    key_takeaways,
-                    deep_dive_opportunities,
-                    deep_dive_risks,
-                    deep_dive_strategy,
-                    implications
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                result.filing_id,
-                company_id,
-                slug,
-                result.tldr_summary or result.deep_intro,
-                json.dumps({
-                    'headline': result.tldr_headline,
-                    'points': result.tldr_key_points,
-                    'metrics': result.key_metrics,
-                    'sentiment': result.sentiment_score,
-                    'bull_case': result.bull_case,
-                    'bear_case': result.bear_case,
-                    'model': result.model_version,
-                    'tokens': (result.prompt_tokens or 0) + (result.completion_tokens or 0),
-                    'duration': result.analysis_duration_seconds
-                }),
-                '\n\n'.join(result.opportunities) if result.opportunities else None,
-                '\n\n'.join(result.risk_factors) if result.risk_factors else None,
-                deep_dive_strategy if deep_dive_strategy else (result.deep_intro or ''),
-                result.deep_conclusion
-            ))
-
-            content_id = cursor.fetchone()[0]
-
-            # Update filing status
-            cursor.execute(
-                "UPDATE filings SET status = 'analyzed' WHERE id = %s",
-                (result.filing_id,)
+        summary = result.tldr_summary or result.deep_intro
+        if not summary:
+            raise DatabaseError(
+                f"Refusing to save analysis for filing {result.filing_id}: "
+                "no summary or intro (content.executive_summary is NOT NULL)"
             )
 
-            self.db_connection.commit()
-            cursor.close()
+        report = getattr(self, '_last_report', None)
+        key_takeaways = {
+            'headline': result.tldr_headline,
+            'points': result.tldr_key_points or [],
+            'metrics': result.key_metrics or {},
+            'sentiment': result.sentiment_score,
+            'bull_case': result.bull_case,
+            'bear_case': result.bear_case,
+            'sections': result.deep_sections or [],
+            'conclusion': result.deep_conclusion,
+            'model': result.model_version,
+            'tokens': (result.prompt_tokens or 0) + (result.completion_tokens or 0),
+            'duration': result.analysis_duration_seconds,
+            'analyzed_at': datetime.utcnow().isoformat(),
+        }
+        if report is not None and not report.is_clean:
+            key_takeaways['synthesis'] = report.to_dict()
 
-            if self.logger:
-                self.logger.info(
-                    f"Saved analysis to database",
-                    extra={'content_id': content_id, 'filing_id': result.filing_id, 'slug': slug}
-                )
+        record = ContentRecord(
+            filing_id=result.filing_id,
+            company_id=str(context['company_id']),
+            slug=slug,
+            executive_summary=summary,
+            key_takeaways=key_takeaways,
+            deep_dive_opportunities=(
+                '\n\n'.join(result.opportunities) if result.opportunities else None
+            ),
+            deep_dive_risks=(
+                '\n\n'.join(result.risk_factors) if result.risk_factors else None
+            ),
+            deep_dive_strategy=strategy or None,
+            implications=result.deep_conclusion,
+            meta_description=(summary or '')[:300] or None,
+        )
 
-            return content_id
+        try:
+            with transaction(self.db_connection):
+                upserted = contents.upsert_analysis(record)
+                filings.set_status(result.filing_id, 'analyzed', processed=True)
+        except DbError as e:
+            raise DatabaseError(
+                f"Failed to save analysis for filing {result.filing_id}: {e}"
+            ) from e
 
-        except Exception as e:
-            self.db_connection.rollback()
-            raise DatabaseError(f"Failed to save analysis to database: {e}")
+        if self.logger:
+            self.logger.info(
+                "Saved analysis to database",
+                extra={
+                    'content_id': upserted.id,
+                    'filing_id': result.filing_id,
+                    'slug': record.slug,
+                    'created': upserted.created,
+                },
+            )
+
+        return upserted.id
 
     def count_pending_filings(self) -> int:
         """
-        Count the number of filings pending analysis
+        Count filings pending analysis.
 
-        Returns:
-            Number of filings with status='pending'
-
-        Raises:
-            DatabaseError: If database query fails
+        Delegates to FilingRepository, which also excludes filings that already
+        have content -- a filing left at status='pending' after a crash used to
+        be counted (and re-analyzed) even though its analysis existed.
         """
-        if not self.db_connection:
-            raise DatabaseError("No database connection available")
-
+        filings, _ = self._require_repos()
         try:
-            cursor = self.db_connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM filings WHERE status = 'pending'")
-            count = cursor.fetchone()[0]
-            cursor.close()
-            return count
-        except Exception as e:
-            raise DatabaseError(f"Failed to count pending filings: {e}")
+            return filings.count_pending()
+        except DbError as e:
+            raise DatabaseError(f"Failed to count pending filings: {e}") from e
 
     def get_pending_filings(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Get pending filings from database
+        Get pending filings.
 
-        Args:
-            limit: Maximum number of filings to return (None = all)
-
-        Returns:
-            List of filing dictionaries with keys: filing_id, ticker, filing_type
-
-        Raises:
-            DatabaseError: If database query fails
+        ``limit`` is bound as a parameter rather than interpolated into the SQL.
         """
-        if not self.db_connection:
-            raise DatabaseError("No database connection available")
-
+        filings, _ = self._require_repos()
         try:
-            cursor = self.db_connection.cursor()
-
-            query = """
-                SELECT f.id as filing_id, c.ticker, f.filing_type
-                FROM filings f
-                JOIN companies c ON f.company_id = c.id
-                WHERE f.status = 'pending'
-                ORDER BY f.id DESC
-            """
-
-            if limit:
-                query += f" LIMIT {limit}"
-
-            cursor.execute(query)
-            columns = ['filing_id', 'ticker', 'filing_type']
-            filings = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            cursor.close()
-
-            return filings
-        except Exception as e:
-            raise DatabaseError(f"Failed to get pending filings: {e}")
+            return filings.pending(limit=limit)
+        except DbError as e:
+            raise DatabaseError(f"Failed to get pending filings: {e}") from e
 
     def analyze_batch(self, limit: Optional[int] = None, workers: int = 3) -> Dict[str, int]:
         """
-        Analyze a batch of pending filings
+        Analyze pending filings and persist each result.
 
-        Args:
-            limit: Maximum number of filings to analyze (None = all pending)
-            workers: Number of parallel workers (currently not used, for future parallelization)
+        The previous implementation called ``analyze_filing()`` and nothing
+        else -- it never called ``save_to_database()``. Every filing was sent to
+        Bedrock, charged for, printed as "analyzed successfully", and discarded;
+        the filing stayed ``pending`` so the next run did it again. This now goes
+        through ``process_filing()``, which analyzes *and* saves.
 
-        Returns:
-            Dictionary with keys 'analyzed' and 'failed'
-
-        Raises:
-            DatabaseError: If database connection fails
+        Returns counts for analyzed / skipped / failed. ``skipped`` is filings
+        that already had content, which is a normal outcome on a rerun and not a
+        failure.
         """
-        if not self.db_connection:
-            raise DatabaseError("No database connection available")
-
         filings = self.get_pending_filings(limit=limit)
-        analyzed_count = 0
-        failed_count = 0
+        stats = {'analyzed': 0, 'skipped': 0, 'failed': 0, 'total': len(filings)}
 
         for idx, filing in enumerate(filings, 1):
+            label = f"{filing['ticker']} ({filing['filing_type']})"
             try:
-                self.analyze_filing(filing['filing_id'])
-                analyzed_count += 1
-                print(f"  [{idx}/{len(filings)}] ✓ {filing['ticker']} ({filing['filing_type']}) analyzed successfully")
+                content_id = self.process_filing(
+                    filing_id=filing['filing_id'],
+                    analysis_type=AnalysisType.DEEP_ANALYSIS,
+                    skip_existing=True,
+                )
+                if content_id:
+                    stats['analyzed'] += 1
+                    print(f"  [{idx}/{len(filings)}] \u2713 {label} saved as {content_id}")
+                else:
+                    stats['skipped'] += 1
+                    print(f"  [{idx}/{len(filings)}] \u2298 {label} already analyzed")
             except Exception as e:
-                failed_count += 1
-                error_msg = str(e)[:200]  # Truncate long errors
-                print(f"  [{idx}/{len(filings)}] ✗ {filing['ticker']} ({filing['filing_type']}) - {error_msg}")
+                stats['failed'] += 1
+                print(f"  [{idx}/{len(filings)}] \u2717 {label} - {str(e)[:200]}")
                 if self.logger:
-                    self.logger.error(f"Failed to analyze {filing['ticker']}: {e}")
+                    self.logger.error(
+                        f"Failed to analyze {label}",
+                        exception=e,
+                        extra={'filing_id': filing['filing_id']},
+                    )
+                # Record why, so a filing does not sit in 'pending' with no trace.
+                self._mark_failed(filing['filing_id'], e)
 
-        return {'analyzed': analyzed_count, 'failed': failed_count}
+        return stats
+
+    def _mark_failed(self, filing_id: str, error: BaseException) -> None:
+        """Best-effort: note the failure on the filing without masking the cause."""
+        filings, _ = self._require_repos()
+        try:
+            filings.set_status(filing_id, 'pending', error_message=str(error)[:1000])
+        except DbError:
+            if self.logger:
+                self.logger.warning(
+                    "Could not record failure on filing",
+                    extra={'filing_id': filing_id},
+                )

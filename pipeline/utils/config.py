@@ -22,6 +22,14 @@ class AWSConfig:
     s3_filings_bucket: str
     s3_audio_bucket: str
     bedrock_model_id: str
+    # The deep-analysis prompt asks for a 2000-3000 word document. At the old
+    # hard-coded 4096 the response was truncated mid-JSON on essentially every
+    # deep run, which the parser then rejected outright. Sonnet 4.5 supports far
+    # more; 16384 covers the longest analyses with headroom.
+    bedrock_max_tokens: int = 16384
+    # Analysis is an extraction task, not a creative one. Lower temperature
+    # means fewer schema deviations and fewer malformed-JSON retries.
+    bedrock_temperature: float = 0.3
 
     @classmethod
     def from_env(cls) -> 'AWSConfig':
@@ -30,9 +38,21 @@ class AWSConfig:
             region=os.getenv('AWS_REGION', 'us-east-1'),
             access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
             secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            s3_filings_bucket=os.getenv('S3_BUCKET_FILINGS', '10kay-filings'),
-            s3_audio_bucket=os.getenv('S3_BUCKET_AUDIO', '10kay-audio'),
-            bedrock_model_id=os.getenv('AWS_BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
+            # Accept both names: the workflows set S3_BUCKET_FILINGS, .env.example
+            # documents AWS_S3_FILINGS_BUCKET, and only the former used to work.
+            s3_filings_bucket=(
+                os.getenv('S3_BUCKET_FILINGS')
+                or os.getenv('AWS_S3_FILINGS_BUCKET')
+                or '10kay-filings'
+            ),
+            s3_audio_bucket=(
+                os.getenv('S3_BUCKET_AUDIO')
+                or os.getenv('AWS_S3_AUDIO_BUCKET')
+                or '10kay-audio'
+            ),
+            bedrock_model_id=os.getenv('AWS_BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'),
+            bedrock_max_tokens=int(os.getenv('AWS_BEDROCK_MAX_TOKENS', '16384')),
+            bedrock_temperature=float(os.getenv('AWS_BEDROCK_TEMPERATURE', '0.3')),
         )
 
 

@@ -1055,157 +1055,137 @@ class BlogGenerator(BaseGenerator):
         if not self.db_connection:
             raise DatabaseError("No database connection available")
 
+        from ..db import ContentRepository, DatabaseError as DbError
+
+        column = (
+            'email_html'
+            if generated.format == ContentFormat.EMAIL_HTML
+            else 'blog_html'
+        )
+
+        if not generated.output or not generated.output.strip():
+            raise DatabaseError(
+                f"Refusing to write empty {column} for content {content_id}"
+            )
+
         try:
-            cursor = self.db_connection.cursor()
+            # Raises RecordNotFound when no row matched, instead of the old
+            # silent no-op that reported success for a content_id that had been
+            # deleted between the queue read and the write.
+            ContentRepository(self.db_connection).set_html(
+                content_id, column, generated.output
+            )
+        except DbError as e:
+            raise DatabaseError(f"Failed to save {column}: {e}") from e
 
-            # For email format, save as email_html; for blog format, save as blog_html
-            # Do NOT set published_at here - let the publish phase handle that
-            if generated.format == ContentFormat.EMAIL_HTML:
-                cursor.execute("""
-                    UPDATE content
-                    SET email_html = %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                """, (
-                    generated.output,
-                    content_id
-                ))
-                format_name = "email HTML"
-            else:
-                # Default: BLOG_POST_HTML
-                cursor.execute("""
-                    UPDATE content
-                    SET blog_html = %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                """, (
-                    generated.output,
-                    content_id
-                ))
-                format_name = "blog HTML"
-
-            self.db_connection.commit()
-            cursor.close()
-
-            if self.logger:
-                self.logger.info(
-                    f"Saved {format_name} to database",
-                    extra={'content_id': content_id}
-                )
-
-        except Exception as e:
-            self.db_connection.rollback()
-            raise DatabaseError(f"Failed to save blog HTML: {e}")
+        if self.logger:
+            self.logger.info(
+                f"Saved {column} to database",
+                extra={'content_id': content_id, 'bytes': len(generated.output)},
+            )
 
     def count_pending_generations(self) -> int:
-        """
-        Count the number of contents pending generation
-
-        Returns:
-            Number of content records with status='analyzed'
-
-        Raises:
-            DatabaseError: If database query fails
-        """
+        """Count current content records still missing blog or email HTML."""
         if not self.db_connection:
             raise DatabaseError("No database connection available")
 
+        from ..db import ContentRepository, DatabaseError as DbError
+
         try:
-            cursor = self.db_connection.cursor()
-            # Content is pending generation if it has no HTML yet (blog_html or email_html is NULL)
-            cursor.execute("SELECT COUNT(*) FROM content WHERE blog_html IS NULL OR email_html IS NULL")
-            count = cursor.fetchone()[0]
-            cursor.close()
-            return count
-        except Exception as e:
-            raise DatabaseError(f"Failed to count pending generations: {e}")
+            return ContentRepository(self.db_connection).count_pending_generation()
+        except DbError as e:
+            raise DatabaseError(f"Failed to count pending generations: {e}") from e
 
     def get_pending_generations(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Get pending content generations from database
+        Content still awaiting HTML generation.
 
-        Args:
-            limit: Maximum number of items to return (None = all)
-
-        Returns:
-            List of content dictionaries with keys: content_id, filing_id, ticker, filing_type
-
-        Raises:
-            DatabaseError: If database query fails
+        Each row carries ``needs_blog`` / ``needs_email`` so the batch only
+        regenerates the format that is actually missing, rather than rewriting
+        both every pass. ``limit`` is a bind parameter, not string interpolation.
         """
         if not self.db_connection:
             raise DatabaseError("No database connection available")
+
+        from ..db import ContentRepository, DatabaseError as DbError
 
         try:
-            cursor = self.db_connection.cursor()
+            return ContentRepository(self.db_connection).pending_generation(limit=limit)
+        except DbError as e:
+            raise DatabaseError(f"Failed to get pending generations: {e}") from e
 
-            query = """
-                SELECT c.id as content_id, f.id as filing_id, co.ticker, f.filing_type
-                FROM content c
-                JOIN filings f ON c.filing_id = f.id
-                JOIN companies co ON f.company_id = co.id
-                WHERE c.blog_html IS NULL OR c.email_html IS NULL
-                ORDER BY c.created_at DESC
-            """
-
-            if limit:
-                query += f" LIMIT {limit}"
-
-            cursor.execute(query)
-            columns = ['content_id', 'filing_id', 'ticker', 'filing_type']
-            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            cursor.close()
-
-            return items
-        except Exception as e:
-            raise DatabaseError(f"Failed to get pending generations: {e}")
-
-    def generate_batch(self, limit: Optional[int] = None, formats: List[str] = None, workers: int = 3) -> Dict[str, int]:
+    def generate_batch(
+        self,
+        limit: Optional[int] = None,
+        formats: Optional[List[str]] = None,
+        workers: int = 3,
+    ) -> Dict[str, int]:
         """
-        Generate content for a batch of pending items
+        Generate HTML for pending content.
 
-        Args:
-            limit: Maximum number of items to generate (None = all pending)
-            formats: List of formats to generate ('blog', 'email', etc.)
-            workers: Number of parallel workers (currently not used, for future parallelization)
+        Two fixes over the previous version:
+
+        1. It filtered ``formats`` down to BLOG_POST_HTML only, so ``email_html``
+           was never written -- while the publish phase selects on
+           ``email_html IS NOT NULL``. Nothing generated by this path could ever
+           be published, and the same rows stayed in the queue forever.
+        2. It regenerated every requested format on every pass. Rows now carry
+           ``needs_blog`` / ``needs_email`` so only the missing format is built.
 
         Returns:
-            Dictionary with keys 'generated' and 'failed'
-
-        Raises:
-            DatabaseError: If database connection fails
+            Counts for generated / skipped / failed.
         """
         if not self.db_connection:
             raise DatabaseError("No database connection available")
 
-        if formats is None:
-            formats = [ContentFormat.BLOG_POST_HTML]
-
-        # Filter to only supported formats (currently only BLOG_POST_HTML is implemented)
-        supported_formats = [fmt for fmt in formats if fmt == ContentFormat.BLOG_POST_HTML]
-        if not supported_formats:
-            print("Warning: No supported formats requested. Will generate BLOG_POST_HTML by default.")
-            supported_formats = [ContentFormat.BLOG_POST_HTML]
+        requested = list(formats) if formats else [
+            ContentFormat.BLOG_POST_HTML,
+            ContentFormat.EMAIL_HTML,
+        ]
+        supported = [
+            fmt for fmt in requested
+            if fmt in (ContentFormat.BLOG_POST_HTML, ContentFormat.EMAIL_HTML)
+        ]
+        if not supported:
+            raise GenerationError(
+                f"No supported formats in {requested!r}; "
+                f"BlogGenerator produces {ContentFormat.BLOG_POST_HTML} and "
+                f"{ContentFormat.EMAIL_HTML}"
+            )
 
         items = self.get_pending_generations(limit=limit)
-        generated_count = 0
-        failed_count = 0
+        stats = {'generated': 0, 'skipped': 0, 'failed': 0, 'total': len(items)}
 
         for idx, item in enumerate(items, 1):
+            label = f"{item['ticker']} ({item['filing_type']})"
+
+            needed = [
+                fmt for fmt in supported
+                if (fmt == ContentFormat.BLOG_POST_HTML and item.get('needs_blog', True))
+                or (fmt == ContentFormat.EMAIL_HTML and item.get('needs_email', True))
+            ]
+            if not needed:
+                stats['skipped'] += 1
+                continue
+
             try:
-                # Generate each format for this content
-                for fmt in supported_formats:
+                for fmt in needed:
                     generated_content = self.generate(item['content_id'], format=fmt)
-                    # Save the generated content to the database
                     self.save_to_database(item['content_id'], generated_content)
 
-                generated_count += 1
-                print(f"  [{idx}/{len(items)}] ✓ {item['ticker']} ({item['filing_type']}) generated successfully")
+                stats['generated'] += 1
+                print(
+                    f"  [{idx}/{len(items)}] \u2713 {label} "
+                    f"generated {', '.join(str(f) for f in needed)}"
+                )
             except Exception as e:
-                failed_count += 1
-                error_msg = str(e)[:200]  # Truncate long errors
-                print(f"  [{idx}/{len(items)}] ✗ {item['ticker']} ({item['filing_type']}) - {error_msg}")
+                stats['failed'] += 1
+                print(f"  [{idx}/{len(items)}] \u2717 {label} - {str(e)[:200]}")
                 if self.logger:
-                    self.logger.error(f"Failed to generate {item['ticker']}: {e}")
+                    self.logger.error(
+                        f"Failed to generate {label}",
+                        exception=e,
+                        extra={'content_id': item['content_id']},
+                    )
 
-        return {'generated': generated_count, 'failed': failed_count}
+        return stats

@@ -158,93 +158,61 @@ class EarningsCalendarFetcher:
                 self.logger.info("No earnings events to save")
             return 0
 
-        cursor = self.db_connection.cursor()
-        saved_count = 0
+        from ..db import CompanyRepository, EarningsRecord, EarningsRepository
+
+        companies = CompanyRepository(self.db_connection)
+        records = []
+        skipped = 0
 
         for event in events:
-            try:
-                # Skip events without required fields
-                if not event.get('symbol') or not event.get('date'):
-                    continue
+            symbol = (event.get('symbol') or '').strip()
+            raw_date = event.get('date')
+            if not symbol or not raw_date:
+                skipped += 1
+                continue
 
-                # Get company_id from ticker
-                cursor.execute(
-                    "SELECT id FROM companies WHERE ticker = %s",
-                    (event['symbol'],)
-                )
-                result = cursor.fetchone()
-
-                if not result:
-                    if self.logger:
-                        self.logger.debug(
-                            f"Skipping {event['symbol']} - not in companies table"
-                        )
-                    continue
-
-                company_id = result[0]
-
-                # Parse earnings date
-                earnings_date = datetime.strptime(event['date'], '%Y-%m-%d').date()
-
-                # Upsert earnings event
-                # Use ON CONFLICT to update if the same company/fiscal period already exists
-                cursor.execute("""
-                    INSERT INTO scheduled_earnings (
-                        company_id,
-                        ticker,
-                        earnings_date,
-                        earnings_time,
-                        fiscal_year,
-                        fiscal_quarter,
-                        eps_estimate,
-                        revenue_estimate,
-                        status,
-                        source,
-                        fetched_at,
-                        updated_at
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    )
-                    ON CONFLICT (company_id, fiscal_year, fiscal_quarter)
-                    DO UPDATE SET
-                        earnings_date = EXCLUDED.earnings_date,
-                        earnings_time = EXCLUDED.earnings_time,
-                        eps_estimate = EXCLUDED.eps_estimate,
-                        revenue_estimate = EXCLUDED.revenue_estimate,
-                        fetched_at = EXCLUDED.fetched_at,
-                        updated_at = EXCLUDED.updated_at
-                    RETURNING id
-                """, (
-                    company_id,
-                    event['symbol'],
-                    earnings_date,
-                    event.get('hour'),  # 'bmo' or 'amc'
-                    event.get('year'),
-                    event.get('quarter'),
-                    event.get('epsEstimate'),
-                    event.get('revenueEstimate'),
-                    'scheduled',
-                    'finnhub',
-                    datetime.now(),
-                    datetime.now()
-                ))
-
-                saved_count += 1
-
-            except Exception as e:
+            company_id = companies.find_id(symbol)
+            if not company_id:
+                skipped += 1
                 if self.logger:
-                    self.logger.error(
-                        f"Failed to save earnings event for {event.get('symbol')}",
-                        exception=e
+                    self.logger.debug(f"Skipping {symbol} - not in companies table")
+                continue
+
+            try:
+                earnings_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                skipped += 1
+                if self.logger:
+                    self.logger.warning(
+                        f"Skipping {symbol} - unparseable earnings date {raw_date!r}"
                     )
                 continue
 
-        # Commit all changes
-        self.db_connection.commit()
-        cursor.close()
+            # scheduled_earnings.fiscal_year is NOT NULL, but Finnhub omits it
+            # on some events. Falling back to the calendar year of the earnings
+            # date beats losing the row to a NOT NULL violation mid-batch.
+            fiscal_year = event.get('year') or earnings_date.year
+            quarter = event.get('quarter')
+
+            records.append(EarningsRecord(
+                company_id=company_id,
+                ticker=symbol,
+                earnings_date=earnings_date,
+                fiscal_year=int(fiscal_year),
+                fiscal_quarter=int(quarter) if quarter else None,
+                earnings_time=event.get('hour'),
+                eps_estimate=event.get('epsEstimate'),
+                revenue_estimate=event.get('revenueEstimate'),
+            ))
+
+        stats = EarningsRepository(self.db_connection).upsert_many(records)
+        saved_count = stats['created'] + stats['updated']
 
         if self.logger:
-            self.logger.info(f"Saved {saved_count} earnings events to database")
+            self.logger.info(
+                f"Saved {saved_count} earnings events to database",
+                extra={**stats, 'skipped': skipped},
+            )
 
         return saved_count
 

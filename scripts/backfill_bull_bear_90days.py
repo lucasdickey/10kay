@@ -59,10 +59,12 @@ def get_recent_analyses_90days(db_connection, limit=None):
         ORDER BY f.filing_date DESC
     """
 
+    params = []
     if limit:
-        query += f" LIMIT {limit}"
+        query += " LIMIT %s"
+        params.append(limit)
 
-    cursor.execute(query)
+    cursor.execute(query, params)
 
     columns = [desc[0] for desc in cursor.description]
     results = [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -130,9 +132,10 @@ def main():
         print(f"\n[{i}/{len(analyses)}] Processing {ticker} - {filing_type} ({filing_date})...")
 
         try:
-            # Delete existing content
-            print(f"  → Deleting existing content for filing {filing_id}")
-            delete_existing_content(db_connection, filing_id)
+            # No delete: save_to_database() upserts on filing_id and bumps the
+            # version. Deleting first opened a data-loss window -- if the Bedrock
+            # call below failed, the old analysis was already gone and nothing
+            # rewrote it.
 
             # Re-analyze with new prompt (includes bull/bear cases)
             print(f"  → Re-analyzing with updated prompt...")
